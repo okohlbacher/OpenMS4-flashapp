@@ -3,19 +3,37 @@
   "dependencies": {
     "OpenMS": {
       "version": "4.0.0",
-      "source_revision": "21b295c9ad889b402db1e3a20f13e8d08330b61b",
+      "source_revision": "4fdec46b205459b92e7d3b9e56df5d8e912d5c85",
       "repository": "https://github.com/okohlbacher/OpenMS4-core"
     },
-    "pyopenms": {
-      "version": "4.0.0.dev0",
-      "source_revision": "b4de01e1477ddea99121230bfe619c160ec47ff4",
-      "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
+    "OpenMSCLI": {
+      "version": "1.0.0",
+      "source_revision": "51db6bbbdeba53abc57d23c664de37f9c285372e",
+      "repository": "https://github.com/okohlbacher/OpenMS4-cli"
+    },
+    "OpenMSTOPP": {
+      "version": "1.0.0",
+      "source_revision": "94e997007b7af9adbaee95d144324276e9fa56ee",
+      "repository": "https://github.com/okohlbacher/OpenMS4-topp"
     },
     "OpenMSFLASH": {
       "version": "1.0.0",
-      "source_revision": "8125964c7c4559519c418d0fe077bbeed98c418f",
+      "source_revision": "a6ee68f8589e3dd7eb8cb10b0ea7f3b790e72a4c",
       "repository": "https://github.com/okohlbacher/OpenMS4-flash"
+    },
+    "pyopenms": {
+      "version": "4.0.0.dev0",
+      "source_revision": "14d950a460636b9a8fa255b7ac657926fec403de",
+      "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
     }
   },
-  "binary_artifacts": "Not built; exact source pins are not a binary ABI guarantee."
+  "binary_artifacts": "Image assembly remains gated on a compatible FLASHTnT artifact and a completely matching verified runtime/wheel lock. See experimental/validation/README.md.",
+  "external_tools": {
+    "FLASHTnT": {
+      "repository": "https://github.com/t0mdavid-m/OpenMS",
+      "source_revision": "3f508829ad81c91354d397966f28d428e29e5329",
+      "version": null,
+      "status": "Source identified; compatible OpenMS4 binary and reported package version remain required before image assembly."
+    }
+  }
 }
