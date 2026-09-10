@@ -8,7 +8,7 @@
     },
     "pyopenms": {
       "version": "4.0.0.dev0",
-      "source_revision": "8c36beee428789f418554faf7873caa0e5c09bf6",
+      "source_revision": "5e42ac130a3b2912d9e496de1c8edbf49934393d",
       "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
     },
     "OpenMSFLASH": {
