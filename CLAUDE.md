@@ -10,54 +10,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **FLASHTnT** (🧨) — tag-and-track top-down identification: runs FLASHDeconv, then matches short sequence "tags" against a protein FASTA database to identify proteins (PrSMs), with target/decoy FDR.
 - **FLASHQuant** (📊) — proteoform quantification from FLASHDeconv mass traces (view-only; no run step).
 
-The heavy lifting is done by **TOPP command-line tools** (`FLASHDeconv`, `FLASHTnT`, `DecoyDatabase`) shipped in the Docker image; the app drives them, parses their output into pandas DataFrames, caches them per workspace, and renders them through a custom **Vue.js Streamlit component** (`flash_viewer_grid`).
+The heavy lifting is done by **TOPP command-line tools** (`FLASHDeconv`, `FLASHTnT`, `DecoyDatabase`) required by the Docker image; the app drives them, parses their output into pandas DataFrames, caches them per workspace, and renders them through a custom **Vue.js Streamlit component** (`flash_viewer_grid`).
 
-## Commands
+## Commands and build boundary
+
+Use Python 3.12. See `experimental/README.md` for exact artifact and dependency pins.
+The primary Dockerfile consumes prebuilt OpenMS/pyOpenMS and Vue artifacts; it
+has no compiler, Miniforge, GitHub token, architecture-specific build stages,
+Redis server, or nginx. `docker/entrypoint.sh` and the archived Dockerfiles are
+upstream migration references and are not used by this recipe.
 
 ```bash
-# Run locally (online_deployment=false in settings.json → always "local" mode)
-streamlit run app.py local
-
-# Unit tests (pytest; uses fakeredis, needs pyopenms importable)
-pytest tests/ -v
-pytest tests/test_selection_clear.py -v                 # single file
-pytest tests/test_selection_clear.py::test_name -v      # single test
-
-# Lint (errors-only; mirrors .github/workflows/pylint.yml, which runs on `main`)
-pylint $(git ls-files '*.py') --errors-only --disable=C0103,C0114,C0301,C0411,W0212,W0631,W0602,W1514,W2402,E0401,E1101,F0001,R1732
-
-# Docker (full image with OpenMS + TOPP tools + Vue build)
-docker build -f Dockerfile --no-cache -t flashapp:latest --build-arg GITHUB_TOKEN=<gh-token> .
-docker run -p 8501:8501 flashapp:latest          # → http://localhost:8501
-# Dockerfile.arm is the linux/arm64 variant (swaps miniforge installer to aarch64).
+python -m streamlit run app.py local
+python -m unittest discover -s tests -p test_artifacts.py -v
+python -m pytest tests/test_execution_lifecycle.py tests/test_queue_manager_cancel.py -v
 ```
 
-Python is pinned to **3.11** (matches the Docker runtime). `GITHUB_TOKEN` is required at build time to fetch the private `openms-streamlit-vue-component` submodule and OpenMS resources.
+The isolated tests require pytest, psutil, rq, redis and fakeredis. The remaining
+UI/scientific tests additionally require the verified pyOpenMS wheel and complete
+app requirements. Never substitute the public pyOpenMS wheel for the pinned build.
+A set `REDIS_URL` selects online mode, regardless of `online_deployment` in settings.
 
-### Prerequisites before any production / Docker build
-
-These are already the defaults on the `main`/release branches; verify them when building or debugging a blank viewer:
-
-1. **Submodule present:** `git submodule init && git submodule update` (update to latest: `git submodule update --remote`).
-2. **Vue component built & copied:** the bundle in `js-component/dist/` is produced from the `openms-streamlit-vue-component/` submodule (a Vite/Vue project). **Always prefer building the bundle via Docker, never a local Node toolchain** — the repo `Dockerfile` `js-build` stage (`node:21` → `npm install && npm run build`) is the canonical, reproducible build. To rebuild the committed bundle from *local* submodule source (e.g. after editing a `.vue` file), use a small Docker stage that `COPY`s the local submodule and runs `npm run build`, then export and copy `dist/` over `js-component/dist/`:
-   ```dockerfile
-   FROM node:21 AS build
-   WORKDIR /openms-streamlit-vue-component
-   COPY . .
-   RUN npm install && npm run build
-   FROM scratch AS export
-   COPY --from=build /openms-streamlit-vue-component/dist /
-   ```
-   ```bash
-   docker build -f vue-build.Dockerfile --target export \
-     --output type=local,dest=./vue-dist openms-streamlit-vue-component
-   # then replace js-component/dist/ with ./vue-dist/
-   ```
-   Only the prebuilt `js-component/dist/` is committed; the submodule source is fetched separately. (A bare local `npm install && npm run build` also works but is **not** preferred — Docker guarantees the toolchain.)
-3. **`src/render/components.py` → `_RELEASE = True`** (loads the bundle from `js-component/dist/`). When `False`, the component is loaded from the Vite dev server at `http://localhost:5173` for live Vue development.
-4. **`.streamlit/config.toml` → `developmentMode = false`**.
-
-> Build order matters: the OpenMS/TOPP build must precede the Vue build in the Dockerfiles (see recent commits reordering this). `--no-cache` is recommended for the full image.
+Before building an image, verify the pinned Vue submodule and committed
+`js-component/dist/`, `src/render/components.py` `_RELEASE=True`, and the
+Streamlit production setting. Rebuild Vue separately from its pinned checkout
+when needed; the app Dockerfile does not rebuild it. Do not update submodules to
+mutable heads as part of an ordinary checkout.
 
 ## Architecture
 
@@ -102,13 +80,13 @@ The container entrypoint starts **Redis** + one or more **RQ workers** (queue `o
 
 ### CI (`.github/workflows/`)
 
-- `build-and-test.yml` — multi-arch (amd64 + arm64) Docker build → merged manifest, kustomize/kubeconform lint, and **container smoke tests** under apptainer / nginx-on-kind / traefik-on-kind, then publishes images + an ORAS SIF to GHCR. (Its "test" jobs are deployment smoke tests, **not** pytest.)
+- `build-and-test.yml` — manual verification of an explicitly supplied `flashapp-artifacts` bundle from a workflow run. It does not build or publish images. The original upstream build/deployment workflow is archived at `experimental/build-and-test.upstream.yml`.
 - `unit-tests.yml` — the pytest suite. `pylint.yml` — lint. `build-windows-executable-app.yaml` + `test-win-exe-w-embed-py.yaml` — the PyInstaller desktop build. `ghcr-cleanup.yml` — registry GC.
 
 ## Conventions & gotchas
 
 - **`app.py` sets multiprocessing start method to `spawn`** (polars + Unix fork are incompatible) and imports `pyopenms` early (required for the Windows build). Don't remove these.
-- **Running workflows locally needs the TOPP binaries** (`FLASHDeconv`, `FLASHTnT`) on `PATH` — they ship only in the full Docker image. The upload/viewer/download paths work on pre-computed result files without them.
+- **Running workflows locally needs the TOPP binaries** (`FLASHDeconv`, `FLASHTnT`) on `PATH` — they must be supplied by the verified runtime artifact. The upload/viewer/download paths work on pre-computed result files without them.
 - **Windows packaged build:** `run_app.py` + `run_app_temp.spec` (PyInstaller). A `windows` arg in `sys.argv` triggers a working-directory `chdir` in `page_setup()`.
 - Pages start with `page_setup()` from `src/common/common.py`, which initializes the workspace, sidebar, and params; call `save_params(params)` at the end. Use `show_fig()` / `show_table()` for consistent display.
 - Decorate `configure()` / page sections with `@st.fragment` for partial reruns.

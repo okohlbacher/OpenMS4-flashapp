@@ -1,0 +1,15 @@
+[run]
+branch = True
+concurrency = thread, multiprocessing
+parallel = True
+data_file = experimental/validation/.coverage
+include =
+    */src/workflow/CommandExecutor.py
+    */src/workflow/QueueManager.py
+    */src/workflow/WorkflowManager.py
+    */src/workflow/tasks.py
+    */src/workflow/_processes.py
+    */src/workflow/_settings.py
+    */experimental/verify_artifacts.py
+[report]
+show_missing = True

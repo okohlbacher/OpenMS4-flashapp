@@ -1,25 +1,18 @@
+# Local execution. Online deployments also need a separately managed Redis and
+# RQ worker sharing /workspaces and the identical image; see experimental/README.md.
 services:
-  openms-streamlit-template:
+  flashapp:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        GITHUB_TOKEN: $GITHUB_TOKEN
-    image: openms_streamlit_template
-    container_name: openms-streamlit-template
-    restart: always
+        PYTHON_IMAGE: ${PYTHON_IMAGE:?Set an immutable Python 3.12 image with a sha256 digest}
+    image: openms4-flashapp:experimental
     ports:
-      - 8501:8501
+      - "8501:8501"
     volumes:
-      - workspaces-streamlit-template:/workspaces-streamlit-template
-      # Optional: bind-mount a host directory of MS data files at the path
-      # that `local_data_dir` in settings.json points to (the Docker image
-      # defaults this to /mounted-data). When the directory exists at
-      # runtime, the upload page shows an in-app file browser for it.
-      # - /path/on/host:/mounted-data:ro
-    environment:
-      # Number of Streamlit server instances (default: 1 = no load balancer).
-      # Set to >1 to enable nginx load balancing across multiple Streamlit instances.
-      - STREAMLIT_SERVER_COUNT=1
+      - flashapp-workspaces:/workspaces
+      # Optional input data: set local_data_dir in your mounted settings.json.
+      # - /path/to/data:/mounted-data:ro
 volumes:
-  workspaces-streamlit-template:
+  flashapp-workspaces:

@@ -7,7 +7,8 @@ Only activates when running in online mode with Redis available.
 """
 
 import os
-import json
+import time
+from ._settings import load_settings, online_mode
 from typing import Optional, Callable, Any
 from dataclasses import dataclass
 from enum import Enum
@@ -52,12 +53,12 @@ class QueueManager:
     # Redis runs locally in the same container
     REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
-    def __init__(self):
+    def __init__(self, settings=None):
         self._redis = None
         self._queue = None
         self._init_attempted = False
 
-        settings = self._load_settings()
+        settings = self._load_settings() if settings is None else settings
         self._is_online = self._check_online_mode(settings)
 
         queue_settings = settings.get("queue_settings", {})
@@ -69,20 +70,11 @@ class QueueManager:
 
     @staticmethod
     def _load_settings() -> dict:
-        """Load settings.json once; return empty dict on failure."""
-        try:
-            with open("settings.json", "r") as f:
-                return json.load(f)
-        except Exception:
-            return {}
+        """Load execution settings, surfacing malformed configuration."""
+        return load_settings()
 
     def _check_online_mode(self, settings: dict) -> bool:
-        """Check if running in online mode"""
-        # Check environment variable first (set in Docker)
-        if os.environ.get("REDIS_URL"):
-            return True
-
-        return settings.get("online_deployment", False)
+        return online_mode(settings)
 
     def _init_redis(self) -> None:
         """Initialize Redis connection and queue"""
@@ -94,7 +86,7 @@ class QueueManager:
             from redis import Redis
             from rq import Queue
 
-            self._redis = Redis.from_url(self.REDIS_URL)
+            self._redis = Redis.from_url(os.environ.get("REDIS_URL", self.REDIS_URL))
             self._redis.ping()  # Test connection
             self._queue = Queue(self.QUEUE_NAME, connection=self._redis)
         except ImportError:
@@ -171,8 +163,9 @@ class QueueManager:
             JobInfo object or None if not found
         """
         if not self.is_available:
-            return None
+            raise ConnectionError("Queue connection unavailable")
 
+        from rq.exceptions import NoSuchJobError
         try:
             from rq.job import Job
 
@@ -217,7 +210,7 @@ class QueueManager:
                 started_at=str(job.started_at) if job.started_at else None,
                 ended_at=str(job.ended_at) if job.ended_at else None,
             )
-        except Exception:
+        except NoSuchJobError:
             return None
 
     def _get_job_position(self, job_id: str) -> Optional[int]:
@@ -268,22 +261,40 @@ class QueueManager:
             return True
 
         # Tell the worker to interrupt the work-horse before marking canceled.
-        if job.is_started and job.worker_name:
+        if job.is_started:
+            if not job.worker_name:
+                return False
             try:
                 send_stop_job_command(self._redis, job_id)
             except InvalidJobOperation:
-                # The worker just finished or the job moved out of 'started';
-                # fall through to cancel() to settle registry state.
-                pass
+                try:
+                    job.refresh()
+                except Exception:
+                    return False
+                if job.is_started:
+                    return False
             except Exception:
-                pass
+                return False
+            # Publishing a command is not acknowledgement that the work-horse stopped.
+            deadline = time.monotonic() + 3
+            while time.monotonic() < deadline:
+                try:
+                    job.refresh()
+                except Exception:
+                    return False
+                if job.is_stopped or job.is_canceled or job.is_finished or job.is_failed:
+                    return True
+                time.sleep(0.05)
+            return False
 
         try:
             job.cancel()
         except InvalidJobOperation:
-            # Worker already transitioned the job (e.g. to 'stopped'); that
-            # satisfies the user's intent to stop.
-            pass
+            try:
+                job.refresh()
+            except Exception:
+                return False
+            return job.is_canceled or job.is_stopped or job.is_finished
         except Exception:
             return False
 

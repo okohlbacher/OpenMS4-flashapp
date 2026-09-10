@@ -1,0 +1,18 @@
+........................................................................                           [100%]
+=============================== warnings summary ===============================
+tests/test_execution_lifecycle.py::ExecutionLifecycle::test_local_workflow_records_owner_before_execution_and_reaps_tool
+  /opt/homebrew/Cellar/python@3.12/3.12.13_4/Frameworks/Python.framework/Versions/3.12/lib/python3.12/multiprocessing/popen_fork.py:66: DeprecationWarning: This process (pid=16133) is multi-threaded, use of fork() may lead to deadlocks in the child.
+    self.pid = os.fork()
+
+tests/test_execution_lifecycle.py::ExecutionLifecycle::test_uncertain_submission_keeps_id_without_local_fallback
+tests/test_queue_manager_cancel.py::test_stopped_status_is_mapped_in_get_job_info
+  /private/tmp/openms4-flashapp-test-env/lib/python3.12/site-packages/rq/job.py:853: DeprecationWarning: job.exc_info is deprecated, use job.latest_result() instead.
+    warnings.warn('job.exc_info is deprecated, use job.latest_result() instead.', DeprecationWarning)
+
+tests/test_render_compression.py::test_nonempty_input_passes_through_binning
+  /Users/kohlbach/Claude/OpenMS/OpenMS4-Exploration/OpenMS4-tests/packages/flashapp/src/render/compression.py:63: DeprecationWarning: `pl.count()` is deprecated. Please use `pl.len()` instead.
+  (Deprecated in version 0.20.5)
+    total_count = sorted_data.select(pl.count()).item()
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+72 passed, 4 warnings, 46 subtests passed in 5.96s

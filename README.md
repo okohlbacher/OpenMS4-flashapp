@@ -21,7 +21,7 @@ When checking out this repository you will need to run a few extra commands:
 
 If you would like to update the submodule to the latest commit, use the following:
 
-`git submodule update --remote`
+`git submodule update --init --recursive`
 
 See [https://git-scm.com/book/en/v2/Git-Tools-Submodules](https://git-scm.com/book/en/v2/Git-Tools-Submodules)
 for more documentation on submodules
@@ -41,22 +41,25 @@ These steps should be done before building any version of FLASHApp.
 
 ### Docker
 
-First you need to build an image locally.
+This experiment consumes a separately built pyOpenMS wheel, native runtime bundle,
+and the existing Vue bundle. It requires Python 3.12 and an immutable base-image digest.
+It does not build OpenMS or fetch private sources during the image build.
 
-Prerequisite: `src/components.py` has `RELEASE=True` and `dist/` contains a build of the Vue
-component. These should be the settings on the `main` branch.
+Follow [the artifact contract](experimental/README.md), supply `artifacts.lock.json`
+and the named files under `artifacts/`, then run:
 
-build image with: `docker build -f Dockerfile --no-cache -t flashapp:latest --build-arg GITHUB_TOKEN=<your-github-token> .`
+```bash
+export PYTHON_IMAGE='python:3.12-slim@sha256:<actual-image-digest>'
+docker compose build
+docker compose up
+```
 
-You should see a successful output, but you can check if an image is built with:
+Open `http://localhost:8501`. Workspaces persist in a named volume. Compose runs
+local workflows; online execution requires Redis and RQ workers with the same
+image and shared workspace path, as described in the artifact guide.
 
-`docker image ls`
-
-After it has been built you can run the image with:
-
-`docker run -p 8501:8501 flashapp:latest`
-
-Navigate to `http://localhost:8501` in your browser.
+A complete image remains gated on a compatible, separately pinned FLASHTnT binary.
+The source fork is identified, but no OpenMS4 binary compatibility is claimed.
 
 ## Legal pages (Impressum, Privacy Policy, Terms of Use)
 

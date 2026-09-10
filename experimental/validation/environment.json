@@ -1,0 +1,19 @@
+{
+  "python": "3.12.13",
+  "system": "Darwin",
+  "architecture": "arm64",
+  "packages": {
+    "coverage": "7.16.0",
+    "pytest": "9.1.1",
+    "fakeredis": "2.38.0",
+    "psutil": "7.0.0",
+    "rq": "2.12.0",
+    "redis": "8.1.0",
+    "numpy": "2.5.3",
+    "pandas": "2.2.3",
+    "polars": "1.44.2",
+    "pyarrow": "19.0.1",
+    "scipy": "1.18.1",
+    "streamlit": "1.49.1"
+  }
+}

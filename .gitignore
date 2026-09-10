@@ -32,3 +32,5 @@ gdpr_consent/node_modules/
 .streamlit/secrets.toml
 docs/superpowers/
 .venv/
+.coverage*
+.pytest_cache/

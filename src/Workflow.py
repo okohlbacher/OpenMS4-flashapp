@@ -82,12 +82,12 @@ class TagWorkflow(WorkflowManager):
             in_mzmls = self.file_manager.get_files(self.params["mzML-files"])
         except ValueError:
             self.logger.log('Please select at least one mzML file.')  
-            return
+            return False
         try: 
             database = self.file_manager.get_files(self.params["fasta-file"])
         except ValueError:
             self.logger.log('Please select a database.')  
-            return
+            return False
         
         # Make sure output directory exists
         base_path = dirname(self.workflow_dir)
@@ -290,7 +290,7 @@ class DeconvWorkflow(WorkflowManager):
             in_mzmls = self.file_manager.get_files(self.params["mzML-files"])
         except ValueError:
             self.logger.log('Please select at least one mzML file.')  
-            return
+            return False
         
         # Define output directory
         base_path = dirname(self.workflow_dir)

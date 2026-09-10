@@ -16,6 +16,7 @@ def execute_workflow(
     workflow_dir: str,
     workflow_class: str,
     workflow_module: str,
+    settings: dict = None,
 ) -> dict:
     """
     Execute a workflow in the worker process.
@@ -38,6 +39,7 @@ def execute_workflow(
         job = None
 
     workflow_path = Path(workflow_dir)
+    executor = None
 
     try:
         # Update progress
@@ -78,7 +80,9 @@ def execute_workflow(
             cache_path = workflow_path / 'cache'
         file_manager = FileManager(workflow_path, cache_path)
         parameter_manager = ParameterManager(workflow_path)
-        executor = CommandExecutor(workflow_path, logger, parameter_manager)
+        executor = CommandExecutor(workflow_path, logger, parameter_manager, settings=settings)
+        if executor.cancel_file.exists():
+            raise RuntimeError("Workflow was cancelled before execution")
         executor.pid_dir.mkdir(parents=True, exist_ok=True)
 
         _update_progress(job, 0.1, "Starting workflow execution...")
@@ -109,15 +113,15 @@ def execute_workflow(
         _update_progress(job, 0.15, "Executing workflow steps...")
 
         # Execute the workflow
-        workflow.execution()
+        if workflow.execution() is not True:
+            raise RuntimeError("Workflow did not complete successfully")
 
         # Log workflow completion
         logger.log("WORKFLOW FINISHED")
 
         _update_progress(job, 1.0, "Workflow completed")
 
-        # Clean up pid directory (in case it was created by accident)
-        shutil.rmtree(executor.pid_dir, ignore_errors=True)
+        executor.pid_dir.rmdir()
 
         return {
             "success": True,
@@ -141,12 +145,10 @@ def execute_workflow(
         except Exception:
             pass
 
-        # Clean up pid directory
-        try:
-            pid_dir = workflow_path / "pids"
-            shutil.rmtree(pid_dir, ignore_errors=True)
-        except Exception:
-            pass
+        # Stop any verified owned children before dropping their records.
+        if executor is not None:
+            from src.workflow._processes import stop_processes
+            stop_processes(executor.pid_dir, executor.logger)
 
         return {
             "success": False,

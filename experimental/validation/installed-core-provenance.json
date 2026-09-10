@@ -1,0 +1,6 @@
+{
+  "result": "passed",
+  "core_source_revision": "4fdec46b205459b92e7d3b9e56df5d8e912d5c85",
+  "metadata": "actual installed Core JSON",
+  "artifacts": "synthetic archive/wheel with Mach-O headers, not executable products"
+}

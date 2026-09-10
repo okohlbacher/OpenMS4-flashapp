@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "core_source_revision": "REPLACE_WITH_PINNED_CORE_COMMIT",
   "artifacts": [
     {
@@ -15,6 +15,35 @@
   ],
   "required_executables": [
     "FLASHDeconv",
+    "DecoyDatabase",
     "FLASHTnT"
-  ]
+  ],
+  "pyopenms_source_revision": "REPLACE_WITH_PINNED_PYOPENMS_COMMIT",
+  "build_identity": {
+    "build_type": "Release",
+    "system_name": "Linux",
+    "system_processor": "x86_64",
+    "cxx_compiler_id": "REPLACE_WITH_ACTUAL",
+    "cxx_compiler_version": "REPLACE_WITH_ACTUAL",
+    "cxx_standard": 23,
+    "shared_libs": true,
+    "class_testing_enabled": false,
+    "stl_debug": false,
+    "standard_library": "REPLACE_WITH_ACTUAL",
+    "libstdcxx_cxx11_abi": null,
+    "msvc_runtime_library": null,
+    "features": {
+      "hdf5": false,
+      "opentims": false,
+      "thermo_raw": false,
+      "tdl": false,
+      "onnx": false,
+      "openmp": false,
+      "wnetalign": false,
+      "openswath": false
+    },
+    "dependencies": {
+      "REPLACE_WITH_COMPLETE_CORE_DEPENDENCIES": {}
+    }
+  }
 }

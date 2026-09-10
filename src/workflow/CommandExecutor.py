@@ -1,15 +1,18 @@
 import time
-import os
-import shutil
 import subprocess
-import threading
+import psutil
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_EXCEPTION
+from typing import TYPE_CHECKING
 from pathlib import Path
 from .Logger import Logger
-from .ParameterManager import ParameterManager, bool_param_paths_from_param_xml_ini
+from ._processes import record_process, stop_processes, stop_process_trees
+from ._settings import load_settings, online_mode
+if TYPE_CHECKING:
+    from .ParameterManager import ParameterManager
 import sys
 import importlib.util
 import json
-import streamlit as st
 
 class CommandExecutor:
     """
@@ -21,10 +24,12 @@ class CommandExecutor:
     for execution.
     """
     # Methods for running commands and logging
-    def __init__(self, workflow_dir: Path, logger: Logger, parameter_manager: ParameterManager):
+    def __init__(self, workflow_dir: Path, logger: Logger, parameter_manager: "ParameterManager", settings=None):
         self.pid_dir = Path(workflow_dir, "pids")
         self.logger = logger
         self.parameter_manager = parameter_manager
+        self.settings = load_settings() if settings is None else dict(settings)
+        self.cancel_file = Path(workflow_dir, ".cancelled")
 
     def _get_max_threads(self) -> int:
         """
@@ -36,10 +41,10 @@ class CommandExecutor:
         Returns:
             int: Maximum number of threads to use for parallel processing (minimum 1).
         """
-        settings = st.session_state.get("settings", {})
+        settings = self.settings
         max_threads_config = settings.get("max_threads", {"local": 4, "online": 2})
 
-        if settings.get("online_deployment", False):
+        if online_mode(settings):
             value = max_threads_config.get("online", 2)
         else:
             default = max_threads_config.get("local", 4)
@@ -64,7 +69,7 @@ class CommandExecutor:
                                         a command and its arguments.
 
         Returns:
-            bool: True if all commands succeeded, False if any failed.
+            bool: True if all commands succeeded; command failures raise an exception.
         """
         # Get thread settings and calculate distribution
         max_threads = self._get_max_threads()
@@ -75,34 +80,19 @@ class CommandExecutor:
         self.logger.log(f"Running {num_commands} commands (max {parallel_commands} parallel, {max_threads} total threads)...", 1)
         start_time = time.time()
 
-        results = []
-        lock = threading.Lock()
-        semaphore = threading.Semaphore(parallel_commands)
-
-        def run_and_track(cmd):
-            with semaphore:
-                success = self.run_command(cmd)
-                with lock:
-                    results.append(success)
-
-        # Initialize a list to keep track of threads
-        threads = []
-
-        # Start a new thread for each command
-        for cmd in commands:
-            thread = threading.Thread(target=run_and_track, args=(cmd,))
-            thread.start()
-            threads.append(thread)
-
-        # Wait for all threads to complete
-        for thread in threads:
-            thread.join()
+        if not commands:
+            return True
+        with ThreadPoolExecutor(max_workers=parallel_commands) as pool:
+            futures = [pool.submit(self.run_command, command) for command in commands]
+            for future in futures:
+                if not future.result():
+                    raise RuntimeError("A workflow command failed")
 
         # Calculate and log the total execution time
         end_time = time.time()
         self.logger.log(f"Total time to run {num_commands} commands: {end_time - start_time:.2f} seconds", 1)
 
-        return all(results)
+        return True
 
     def run_command(self, command: list[str]) -> bool:
         """
@@ -116,6 +106,9 @@ class CommandExecutor:
         """
         # Ensure all command parts are strings
         command = [str(c) for c in command]
+        if self.cancel_file.exists():
+            raise RuntimeError("Workflow was cancelled")
+        self.pid_dir.mkdir(parents=True, exist_ok=True)
 
         # Log the execution start
         self.logger.log(f"Running command:\n"+' '.join(command)+"\nWaiting for command to finish...", 1)   
@@ -130,24 +123,31 @@ class CommandExecutor:
             bufsize=1,  # Line buffered
             universal_newlines=True
         )
-        child_pid = process.pid
-        
-        # Record the PID to keep track of running processes associated with this workspace/workflow
-        # User can close the Streamlit app and return to a running workflow later
-        pid_file_path = self.pid_dir / str(child_pid)
-        pid_file_path.touch()
-
-        # Buffer for stderr - will only be written to minimal log if process fails
-        stderr_buffer: list[str] = []
-
-        # Real-time output capture
-        self._stream_output(process, stderr_buffer)
-
-        # Wait for process completion
-        process.wait()
-
-        # Cleanup PID file
-        pid_file_path.unlink()
+        pid_file_path = None
+        owned_process = None
+        # The detailed log receives every line; retain only a bounded error tail.
+        stderr_buffer = deque(maxlen=200)
+        try:
+            try:
+                owned_process = psutil.Process(process.pid)
+                pid_file_path = record_process(self.pid_dir, process.pid)
+            except psutil.NoSuchProcess:
+                if process.poll() is None:
+                    raise
+            if self.cancel_file.exists():
+                raise RuntimeError("Workflow was cancelled")
+            self._stream_output(process, stderr_buffer)
+            process.wait()
+        finally:
+            try:
+                if process.poll() is None:
+                    self._terminate_process(process, owned_process)
+            finally:
+                for stream in (process.stdout, process.stderr):
+                    if stream is not None:
+                        stream.close()
+                if pid_file_path is not None:
+                    pid_file_path.unlink(missing_ok=True)
 
         end_time = time.time()
         execution_time = end_time - start_time
@@ -155,13 +155,16 @@ class CommandExecutor:
         # Log completion
         self.logger.log(f"Process finished:\n"+' '.join(command)+f"\nTotal time to run command: {execution_time:.2f} seconds", 1)
 
-        # Check for errors
+        # Another thread may reap the child while cancelling it; never interpret
+        # that Popen fallback returncode as successful workflow completion.
+        if self.cancel_file.exists():
+            raise RuntimeError("Workflow was cancelled")
         if process.returncode != 0:
             # Write buffered stderr to minimal log only on failure
             for line in stderr_buffer:
                 self.logger.log(f"STDERR: {line}", 0)
             self.logger.log(f"ERROR: Command failed with exit code {process.returncode}: {command[0]}", 0)
-            return False
+            raise subprocess.CalledProcessError(process.returncode, command, stderr="\n".join(stderr_buffer))
         return True
 
     def _stream_output(self, process: subprocess.Popen, stderr_buffer: list[str]) -> None:
@@ -176,45 +179,42 @@ class CommandExecutor:
             process: The subprocess.Popen object to stream from
             stderr_buffer: A list to accumulate stderr lines for conditional logging
         """
-        def read_stdout():
-            """Read stdout in real-time"""
+        def read_output(stream, is_stderr):
+            with stream:
+                for line in iter(stream.readline, ''):
+                    message = line.rstrip()
+                    if is_stderr:
+                        stderr_buffer.append(message[-4096:])
+                        message = f"STDERR: {message}"
+                    self.logger.log(message, 2)
+
+        with ThreadPoolExecutor(max_workers=2) as readers:
+            futures = [readers.submit(read_output, process.stdout, False),
+                       readers.submit(read_output, process.stderr, True)]
+            done, _ = wait(futures, return_when=FIRST_EXCEPTION)
+            if any(future.exception() is not None for future in done):
+                # Closing one failed reader is insufficient: the other may block
+                # until a sleeping child exits. Terminate before joining readers.
+                self._terminate_process(process)
+            for future in futures:
+                future.result()
+
+    def _terminate_process(self, process, owned_process=None):
+        try:
             try:
-                for line in iter(process.stdout.readline, ''):
-                    if line:
-                        self.logger.log(line.rstrip(), 2)
-                    if process.poll() is not None:
-                        break
-            except Exception as e:
-                self.logger.log(f"Error reading stdout: {e}", 2)
-            finally:
-                process.stdout.close()
-
-        def read_stderr():
-            """Read stderr in real-time, buffering for conditional minimal log output"""
-            try:
-                for line in iter(process.stderr.readline, ''):
-                    if line:
-                        stderr_line = line.rstrip()
-                        stderr_buffer.append(stderr_line)
-                        # Log to detailed log only during execution
-                        self.logger.log(f"STDERR: {stderr_line}", 2)
-                    if process.poll() is not None:
-                        break
-            except Exception as e:
-                self.logger.log(f"Error reading stderr: {e}", 2)
-            finally:
-                process.stderr.close()
-
-        # Start threads to read stdout and stderr simultaneously
-        stdout_thread = threading.Thread(target=read_stdout, daemon=True)
-        stderr_thread = threading.Thread(target=read_stderr, daemon=True)
-
-        stdout_thread.start()
-        stderr_thread.start()
-
-        # Wait for both threads to complete
-        stdout_thread.join()
-        stderr_thread.join()
+                owner = owned_process or psutil.Process(process.pid)
+                stop_process_trees([owner], self.logger)
+            except psutil.NoSuchProcess:
+                pass
+        finally:
+            # Popen owns this direct child even when identity/bookkeeping failed.
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
 
     def run_topp(self, tool: str, input_output: dict, custom_params: dict = {}, tool_instance_name: str = None) -> bool:
         """
@@ -240,12 +240,13 @@ class CommandExecutor:
             entries are passed as valueless CLI flags (``-name`` only when enabled).
 
         Returns:
-            bool: True if all commands succeeded, False if any failed.
+            bool: True if all commands succeeded; command failures raise an exception.
 
         Raises:
             ValueError: If the lengths of input/output file lists are inconsistent,
                         except for single string inputs.
         """
+        from .ParameterManager import bool_param_paths_from_param_xml_ini
         # check input: any input lists must be same length, other items can be a single string
         # e.g. input_mzML : [list of n mzML files], output_featureXML : [list of n featureXML files], input_database : database.tsv
         io_lengths = [len(v) for v in input_output.values() if len(v) > 1]
@@ -353,21 +354,12 @@ class CommandExecutor:
         else:
             raise Exception("No commands to execute.")
 
-    def stop(self) -> None:
+    def stop(self) -> bool:
         """
         Terminates all processes initiated by this executor by killing them based on stored PIDs.
         """
-        self.logger.log("Stopping all running processes...")
-        pids = [Path(f).stem for f in self.pid_dir.iterdir()]
-        
-        for pid in pids:
-            try:
-                os.kill(int(pid), 9)
-            except OSError as e:
-                self.logger.log(f"Failed to kill process {pid}: {e}")
-        
-        shutil.rmtree(self.pid_dir, ignore_errors=True)
-        self.logger.log("Workflow stopped.")
+        self.cancel_file.touch()
+        return stop_processes(self.pid_dir, self.logger)
 
     def run_python(self, script_file: str, input_output: dict = {}) -> None:
         """
@@ -395,7 +387,7 @@ class CommandExecutor:
         if not path.exists():
             path = Path("src", "python-tools", script_file)
             if not path.exists():
-                self.logger.log(f"Script file not found: {script_file}")
+                raise FileNotFoundError(f"Script file not found: {script_file}")
                 
         # load DEFAULTS
         if path.parent not in sys.path:
@@ -407,7 +399,7 @@ class CommandExecutor:
         if defaults is None:
             self.logger.log(f"WARNING: No DEFAULTS found in {path.name}")
             # run command without params
-            self.run_command(["python", str(path)])
+            self.run_command([sys.executable, str(path)])
         elif isinstance(defaults, list):
             defaults = {entry["key"]: entry["value"] for entry in defaults}
             # load paramters from JSON file
@@ -422,6 +414,9 @@ class CommandExecutor:
             with open(tmp_params_file, "w", encoding="utf-8") as f:
                 json.dump(defaults, f, indent=4)
             # run command
-            self.run_command(["python", str(path), str(tmp_params_file)])
-            # remove tmp params file
-            tmp_params_file.unlink()
+            try:
+                self.run_command([sys.executable, str(path), str(tmp_params_file)])
+            finally:
+                tmp_params_file.unlink(missing_ok=True)
+        else:
+            raise ValueError(f"DEFAULTS in {path.name} must be a list")

@@ -7,9 +7,11 @@ from .StreamlitUI import StreamlitUI
 from .FileManager import FileManager
 import multiprocessing
 import shutil
-import time
+import uuid
 import traceback
 import streamlit as st
+from ._processes import record_process, stop_processes
+from ._settings import load_settings, online_mode
 
 class WorkflowManager:
     # Core workflow logic using the above classes
@@ -25,7 +27,9 @@ class WorkflowManager:
         self.file_manager = FileManager(self.workflow_dir, cache_path)
         self.logger = Logger(self.workflow_dir)
         self.parameter_manager = ParameterManager(self.workflow_dir, workflow_name=name)
-        self.executor = CommandExecutor(self.workflow_dir, self.logger, self.parameter_manager)
+        settings = st.session_state.get("settings")
+        self.execution_settings = dict(load_settings() if settings is None else settings)
+        self.executor = CommandExecutor(self.workflow_dir, self.logger, self.parameter_manager, self.execution_settings)
         self.ui = StreamlitUI(self.workflow_dir, self.logger, self.executor, self.parameter_manager)
         self.params = self.parameter_manager.get_parameters_from_json()
 
@@ -36,13 +40,13 @@ class WorkflowManager:
 
     def _is_online_mode(self) -> bool:
         """Check if running in online deployment mode"""
-        return st.session_state.get("settings", {}).get("online_deployment", False)
+        return online_mode(self.execution_settings)
 
     def _init_queue_manager(self) -> None:
         """Initialize queue manager for online mode"""
         try:
             from .QueueManager import QueueManager
-            self._queue_manager = QueueManager()
+            self._queue_manager = QueueManager(settings=self.execution_settings)
         except ImportError:
             pass  # Queue not available, will use fallback
 
@@ -67,27 +71,28 @@ class WorkflowManager:
         from .tasks import execute_workflow
 
         # Generate unique job ID based on workflow directory
-        job_id = f"workflow-{self.workflow_dir.name}-{int(time.time())}"
+        job_id = f"workflow-{self.workflow_dir.name}-{uuid.uuid4().hex}"
 
-        # Submit job to queue
+        # Clear cancellation only when starting a new run.
+        self.executor.cancel_file.unlink(missing_ok=True)
+        # Enqueue acknowledgement can be lost after Redis accepted the job.
+        # Preserve the caller-generated identity before making that request.
+        self._queue_manager.store_job_id(self.workflow_dir, job_id)
         submitted_id = self._queue_manager.submit_job(
             func=execute_workflow,
             kwargs={
                 "workflow_dir": str(self.workflow_dir),
                 "workflow_class": self.__class__.__name__,
                 "workflow_module": self.__class__.__module__,
+                "settings": {key: self.execution_settings[key] for key in
+                             ("online_deployment", "max_threads") if key in self.execution_settings},
             },
             job_id=job_id,
             description=f"Workflow: {self.name}"
         )
 
-        if submitted_id:
-            # Store job ID for status checking
-            self._queue_manager.store_job_id(self.workflow_dir, submitted_id)
-        else:
-            # Fallback to local execution if queue submission fails
-            st.warning("Queue submission failed, running locally...")
-            self._start_workflow_local()
+        if submitted_id is None:
+            st.warning("Queue submission could not be confirmed. The job ID is retained while its status is checked.")
 
     def _start_workflow_local(self) -> None:
         """Start workflow as local process (existing behavior for local mode)"""
@@ -97,17 +102,32 @@ class WorkflowManager:
 
         # Delete the log file if it already exists
         shutil.rmtree(Path(self.workflow_dir, "logs"), ignore_errors=True)
-        # Start workflow process
-        workflow_process = multiprocessing.Process(target=self.workflow_process)
-        workflow_process.start()
-        # Add workflow process id to pid dir
-        self.executor.pid_dir.mkdir()
-        Path(self.executor.pid_dir, str(workflow_process.pid)).touch()
+        # Establish ownership storage before the child can launch a tool.
+        self.executor.pid_dir.mkdir(parents=True)
+        self.executor.cancel_file.unlink(missing_ok=True)
+        ready = multiprocessing.Event()
+        workflow_process = multiprocessing.Process(target=self.workflow_process, args=(ready,))
+        try:
+            workflow_process.start()
+            record_process(self.executor.pid_dir, workflow_process.pid)
+            ready.set()
+        except BaseException:
+            if workflow_process.pid is not None and workflow_process.is_alive():
+                workflow_process.terminate()
+                workflow_process.join(timeout=3)
+                if workflow_process.is_alive():
+                    workflow_process.kill()
+                    workflow_process.join()
+            stop_processes(self.executor.pid_dir, self.logger)
+            raise
 
-    def workflow_process(self) -> None:
+    def workflow_process(self, ready=None) -> None:
         """
         Workflow process. Logs start and end of the workflow and calls the execution method where all steps are defined.
         """
+        if ready is not None and not ready.wait(timeout=10):
+            self.logger.log("ERROR: Workflow ownership registration timed out")
+            return
         try:
             self.logger.log("STARTING WORKFLOW")
             results_dir = Path(self.workflow_dir, "results")
@@ -115,8 +135,9 @@ class WorkflowManager:
                 shutil.rmtree(results_dir)
             results_dir.mkdir(parents=True)
             success = self.execution()
-            if success:
-                self.logger.log("WORKFLOW FINISHED")
+            if success is not True:
+                raise RuntimeError("Workflow did not complete successfully")
+            self.logger.log("WORKFLOW FINISHED")
         except Exception as e:
             self.logger.log(f"ERROR: {e}")
             self.logger.log("".join(traceback.format_exception(e)))
@@ -138,10 +159,16 @@ class WorkflowManager:
             - queue_length: total jobs in queue, None if not queued
         """
         # Check queue status first (online mode)
-        if self._queue_manager and self._queue_manager.is_available:
+        if self._queue_manager:
             job_id = self._queue_manager.load_job_id(self.workflow_dir)
             if job_id:
-                job_info = self._queue_manager.get_job_info(job_id)
+                try:
+                    job_info = self._queue_manager.get_job_info(job_id)
+                except Exception as error:
+                    # A transport failure is not proof that the saved job vanished.
+                    return {"running": True, "status": "unavailable", "job_id": job_id,
+                            "progress": None, "current_step": "Queue connection unavailable",
+                            "queue_position": None, "queue_length": None, "error": str(error)}
                 if job_info:
                     is_running = job_info.status.value in ["queued", "started"]
                     return {
@@ -201,41 +228,27 @@ class WorkflowManager:
         eventually evicts the job and get_workflow_status self-heals.
 
         Returns:
-            True if a stop action was taken (queue cancel or local kill).
+            True when owned children are stopped and any queued job stop is acknowledged.
         """
-        # Try to cancel queue job first (online mode)
-        if self._queue_manager and self._queue_manager.is_available:
+        self.executor.cancel_file.touch()
+        # Stop owned tools before interrupting an RQ worker: it may not run finally.
+        children_stopped = stop_processes(self.executor.pid_dir, self.logger)
+        if self._queue_manager:
             job_id = self._queue_manager.load_job_id(self.workflow_dir)
             if job_id:
-                if self._queue_manager.cancel_job(job_id):
+                queue_stopped = self._queue_manager.cancel_job(job_id)
+                if queue_stopped and children_stopped:
                     self.logger.log("WORKFLOW CANCELLED")
-                    shutil.rmtree(self.executor.pid_dir, ignore_errors=True)
                     return True
-
-        # Fallback: stop local process
-        return self._stop_local_workflow()
+                return False
+        if children_stopped:
+            self.logger.log("WORKFLOW CANCELLED")
+        return children_stopped
 
     def _stop_local_workflow(self) -> bool:
-        """Stop locally running workflow process"""
-        import os
-        import signal
-
-        pid_dir = self.executor.pid_dir
-        if not pid_dir.exists():
-            return False
-
-        stopped = False
-        for pid_file in pid_dir.iterdir():
-            try:
-                pid = int(pid_file.name)
-                os.kill(pid, signal.SIGTERM)
-                pid_file.unlink()
-                stopped = True
-            except (ValueError, ProcessLookupError, PermissionError):
-                pid_file.unlink()  # Clean up stale PID file
-
-        # Clean up the pid directory
-        shutil.rmtree(pid_dir, ignore_errors=True)
+        """Stop only verified process identities, retaining records on failure."""
+        self.executor.cancel_file.touch()
+        stopped = stop_processes(self.executor.pid_dir, self.logger)
         if stopped:
             self.logger.log("WORKFLOW CANCELLED")
         return stopped

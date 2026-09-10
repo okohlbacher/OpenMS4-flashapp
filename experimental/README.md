@@ -1,7 +1,130 @@
 # Pinned runtime migration
 
-This app snapshot is independent from the OpenMS source split. Its primary Dockerfile consumes a verified pyOpenMS wheel and a relocatable runtime bundle, and no longer clones or compiles a mutable OpenMS branch. The former Dockerfiles are preserved here only as migration references.
+The app consumes one pyOpenMS wheel, one relocatable native runtime archive, and
+an independently built Vue bundle. The primary Dockerfile performs no OpenMS or
+Vue compilation. Archived upstream Dockerfiles and deployment scripts are
+migration references, not inputs to this image.
 
-Before building an image, create `artifacts.lock.json` from the example with actual artifact SHA-256 values and the core source commit. Put the named wheel and runtime archive in `artifacts/`; provide `PYTHON_IMAGE` pinned by digest. The runtime archive must include core/CLI shared libraries, versioned data, tool manifests and executables. FLASHTnT is a separate runtime requirement of this public app snapshot and does not exist in the audited OpenMS source; supply a separately pinned artifact or disable that workflow in a subsequent app change. FLASHQuant is a viewer for uploaded results here, not a newly invented executable.
+## Artifact contract
 
-No artifact hashes or binary compatibility are fabricated. Until verified artifacts exist, the image recipe intentionally fails. Requirements other than pyOpenMS retain the upstream pins; their compatibility with pyOpenMS 4 and the Vue component must be tested. This recipe is experimental developer deployment, not a production security/packaging claim.
+Create `artifacts.lock.json` from `artifacts.lock.example.json` using actual build
+outputs. The schema is version 2. Core and pyOpenMS source commits must equal the
+app's `dependencies.lock.json`; the runtime also records exact OpenMSCLI,
+OpenMSTOPP and OpenMSFLASH versions and commits. Add an `external_tools.FLASHTnT`
+entry to the app dependency lock only when its independently verified source,
+version and repository are known for the supplied binary.
+
+The wheel embeds `pyopenms/_build_provenance.json`:
+
+```json
+{"schema_version":1,"source_revision":"<pyOpenMS commit>","source_dirty":false,
+ "version":"<pyOpenMS version>","core":{"...":"complete Core build JSON"}}
+```
+
+The runtime contains `share/openms4/runtime-provenance.json`:
+
+```json
+{"schema_version":1,"core":{"...":"complete Core build JSON"},
+ "packages":{"OpenMS":{"source_revision":"<commit>","version":"4.0.0"},
+             "OpenMSCLI":{"source_revision":"<commit>","version":"1.0.0"},
+             "OpenMSTOPP":{"source_revision":"<commit>","version":"1.0.0"},
+             "OpenMSFLASH":{"source_revision":"<commit>","version":"1.0.0"}},
+ "external_tools":{"FLASHTnT":{"repository":"<source URL>","source_revision":"<commit>",
+                               "version":"<reported version>","source_dirty":false}},
+ "executables":["FLASHDeconv","DecoyDatabase","FLASHTnT"]}
+```
+
+Copy `build_identity` from the Core metadata fields listed in the verifier's
+`CORE_FIELDS`. These check exact artifact selection, including build configuration.
+The test-support flag is recorded identity, not an assertion that enabling tests
+itself changes the ABI. The runtime and wheel must embed the same complete Core
+JSON, including compiler, standard library, dual ABI/debug/runtime flags, features
+and dependency versions/targets. Source metadata and hashes identify the trusted
+producer's outputs; they do not independently prove that arbitrary binary bytes
+were compiled from the claimed source. Native smoke tests remain required.
+
+Place only the two named files under `artifacts/`. The archive must contain
+`bin/FLASHDeconv`, `bin/DecoyDatabase`, `bin/FLASHTnT`, shared libraries, runtime
+data and installed tool registries. Executables must be regular native files with
+execute permission on Unix. The verifier checks ELF/Mach-O/PE architecture, wheel
+distribution metadata, embedded source/build identity and SHA-256 digests before
+extraction. It rejects traversal, special files, duplicate members and writes
+through archive links; normal relative library aliases are supported. Universal
+Mach-O archives are currently unsupported and need a target-specific bundle.
+
+```bash
+python experimental/verify_artifacts.py artifacts.lock.json artifacts --check-host
+export PYTHON_IMAGE='python:3.12-slim@sha256:<actual-image-digest>'
+docker compose build
+docker compose up
+```
+
+The build fails on missing or incompatible artifacts. It installs the ordinary
+Python dependency lock with hash checks and installs only the verified local
+pyOpenMS wheel. Compose runs local workflows and persists `/workspaces`.
+
+## External FLASHTnT boundary
+
+The original public app Dockerfile used `https://github.com/t0mdavid-m/OpenMS.git`,
+branch `FVdeploy`. On 2026-09-10 GitHub returned source commit
+`3f508829ad81c91354d397966f28d428e29e5329`; its
+[FLASHTnT source](https://github.com/t0mdavid-m/OpenMS/blob/3f508829ad81c91354d397966f28d428e29e5329/src/topp/FLASHTnT.cpp)
+is present (blob `80628a74e452c5110a98358f78becabbddaa53d1`). That source identification
+is not an OpenMS4 binary compatibility result. No compatible FLASHTnT artifact or
+reported release version has been fabricated. Full-image and TagWorkflow
+acceptance remain blocked until that dependency is supplied and tested.
+FLASHQuant views uploaded results here; it is not a newly invented executable.
+
+## Online execution and acceptance
+
+For online execution, run a separately managed Redis server and RQ worker using
+the identical app image, settings, and shared workspace volume/path. Set the same
+`REDIS_URL` on the Streamlit and worker containers. Start the worker with
+`rq worker openms-workflows --url "$REDIS_URL"`. The primary image does not start
+Redis, nginx, cron, or an embedded supervisor. The archived entrypoint scripts
+assume the old upstream image and must not be used with this recipe.
+
+The UI and worker use the same execution-mode/thread settings. Nonzero commands
+raise; worker `False`, `None` and exception outcomes are failures. Job lookup
+transport errors retain `.job_id`. The caller-generated job ID is persisted before
+enqueue; a lost acknowledgement never starts a duplicate local workflow. Cancellation verifies PID creation identity,
+checks owned descendants, and waits for RQ acknowledgement; failure preserves
+recoverable records instead of declaring success.
+
+A hard-killed RQ work-horse can still be interrupted in the short interval between
+starting a tool and recording its identity. The marker and descendant checks
+reduce this window but are not an orphan-proof supervisor. Live Redis/RQ
+interleaving tests and full app workflows remain release gates. Legacy raw PID
+records are deliberately not signalled because their ownership cannot be verified;
+remove them only after independently confirming the old process has exited.
+
+## Validation
+
+```bash
+python -m unittest discover -s tests -p test_artifacts.py -v
+python -m pytest tests/test_execution_lifecycle.py tests/test_queue_manager_cancel.py tests/test_log_status.py -v
+```
+
+These isolated tests need pytest, psutil, rq, redis and fakeredis; they need no
+OpenMS build or pyOpenMS import. Artifact fixtures contain small native headers
+and exercise rejection paths; they are not executable scientific binaries.
+Lifecycle tests launch only controlled Python children. The local owner-ordering
+test uses `fork` where available. Full UI/scientific tests additionally require
+the actual verified wheel/runtime and app requirements. App dependency resolution,
+image assembly, native ABI loading, live queue cancellation, and scientific result
+correctness are distinct acceptance checks; passing one does not imply the others.
+
+The app's unit workflow runs isolated contracts and ordinary-dependency data tests. The manual artifact
+workflow downloads an explicitly selected `flashapp-artifacts` bundle and applies
+the same verifier. The old monolithic release workflow is archived at
+`experimental/build-and-test.upstream.yml`; its old scheduled GHCR deletion policy
+is likewise archived in `experimental/ghcr-cleanup.upstream.yml`. No replacement image publication or
+production rollout is claimed.
+
+The ordinary Python lock was resolved with pip-compile 7.6.1 on Python 3.12,
+macOS arm64. Its 55 distributions installed successfully with `--require-hashes
+--only-binary=:all:` and `pip check` passed. Imports and a pandas→Arrow parquet→
+Polars round trip passed with NumPy 2.5.3, pandas 2.2.3, Polars 1.44.2, PyArrow
+19.0.1 and SciPy 1.18.1. The existing upload/compression/selection/legal helpers
+and Compose input tests also passed. Linux wheel installation is a CI gate;
+this local result does not establish compatibility with the pending pyOpenMS4 wheel.

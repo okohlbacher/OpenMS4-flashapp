@@ -1568,6 +1568,9 @@ class StreamlitUI:
                 with st.expander("Error Details", expanded=True):
                     st.code(job_error)
 
+        elif job_status == "unavailable":
+            st.warning("Queue connection unavailable. The saved job is retained; its status will be checked again.")
+
         elif job_status == "canceled":
             st.warning(f"**Status: {label}** - Workflow was cancelled.")
 

@@ -16,6 +16,7 @@ worker over Redis pubsub to interrupt the work-horse.
 
 import os
 import sys
+from types import SimpleNamespace
 
 import pytest
 
@@ -74,6 +75,9 @@ def test_cancel_started_job_sends_stop_command_to_worker(monkeypatch):
 
     def fake_send_stop_job_command(connection, job_id, *args, **kwargs):
         stop_calls.append(job_id)
+        acknowledged = Job.fetch(job_id, connection=connection)
+        acknowledged.set_status(JobStatus.STOPPED)
+        acknowledged.save()
 
     import rq.command as rq_command
     monkeypatch.setattr(
@@ -111,8 +115,8 @@ def test_cancel_missing_job_returns_false():
 def test_started_status_without_worker_is_handled_gracefully(monkeypatch):
     """
     Edge case: job is marked started but has no worker_name yet (race between
-    worker pickup and stop click). cancel_job must not raise; it should fall
-    back to canceling the job in the registry.
+    worker pickup and stop click). cancel_job must not raise; it should retain
+    its started state until a stop can be acknowledged.
     """
     qm = _make_queue_manager()
     job = qm._queue.enqueue(os.getcwd, job_id="started-no-worker")
@@ -131,12 +135,12 @@ def test_started_status_without_worker_is_handled_gracefully(monkeypatch):
 
     result = qm.cancel_job("started-no-worker")
 
-    assert result is True
-    # Without a worker_name there is nothing to send the stop command to.
+    assert result is False
+    # No worker acknowledgement is available; do not invent a cancelled state.
     assert stop_calls == []
     assert (
         Job.fetch("started-no-worker", connection=qm._redis).get_status()
-        == JobStatus.CANCELED
+        == JobStatus.STARTED
     )
 
 
@@ -159,3 +163,34 @@ def test_stopped_status_is_mapped_in_get_job_info(monkeypatch):
         "RQ 'stopped' status should be reported as CANCELED to the UI; "
         "otherwise stopped jobs appear stuck in 'queued'."
     )
+
+
+def test_stop_transport_failure_preserves_started_job(monkeypatch):
+    qm = _make_queue_manager()
+    job = qm._queue.enqueue(os.getcwd, job_id="connection-failed")
+    _force_started(job)
+    def unavailable(*args, **kwargs):
+        raise ConnectionError("Redis unavailable")
+    monkeypatch.setattr("rq.command.send_stop_job_command", unavailable)
+    assert qm.cancel_job(job.id) is False
+    assert Job.fetch(job.id, connection=qm._redis).get_status() == JobStatus.STARTED
+
+
+def test_status_transport_error_is_not_missing_job(monkeypatch):
+    qm = _make_queue_manager()
+    def unavailable(*args, **kwargs):
+        raise ConnectionError("Redis unavailable")
+    monkeypatch.setattr(Job, "fetch", unavailable)
+    with pytest.raises(ConnectionError):
+        qm.get_job_info("saved-job")
+
+
+def test_stop_publish_without_acknowledgement_does_not_claim_cancel(monkeypatch):
+    qm = _make_queue_manager()
+    job = qm._queue.enqueue(os.getcwd, job_id="no-ack")
+    _force_started(job)
+    monkeypatch.setattr("rq.command.send_stop_job_command", lambda *args: None)
+    ticks = iter([0.0, 4.0])
+    monkeypatch.setattr("src.workflow.QueueManager.time", SimpleNamespace(monotonic=lambda: next(ticks), sleep=lambda _: None))
+    assert qm.cancel_job(job.id) is False
+    assert Job.fetch(job.id, connection=qm._redis).get_status() == JobStatus.STARTED

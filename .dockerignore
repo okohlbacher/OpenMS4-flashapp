@@ -1,0 +1,23 @@
+.git
+**/.git
+.env
+.env.*
+.streamlit/secrets.toml
+**/__pycache__
+.pytest_cache
+.venv
+myenv
+**/node_modules
+**/pids
+**/.job_id
+**/.cancelled
+**/logs
+workspaces-*
+build
+*.log
+# These are required inputs and must remain in the context.
+!artifacts/
+!artifacts/**
+!artifacts.lock.json
+!js-component/dist/
+!js-component/dist/**

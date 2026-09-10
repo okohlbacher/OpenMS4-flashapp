@@ -22,6 +22,7 @@ These tests pin both behaviours.
 import os
 import sys
 import types
+import json
 
 import pytest
 
@@ -79,22 +80,23 @@ def _make_workflow_manager(tmp_path, monkeypatch) -> WorkflowManager:
 
     pid_dir = workflow_dir / "pids"
     pid_dir.mkdir()
-    (pid_dir / "12345").touch()
+    (pid_dir / "12345").write_text(json.dumps({"pid": 12345, "create_time": 1.0}))
 
     qm = _make_queue_manager()
     job = qm._queue.enqueue(os.getcwd, job_id="wf-job")
     _force_started(job)
     qm.store_job_id(workflow_dir, "wf-job")
 
-    monkeypatch.setattr(
-        "rq.command.send_stop_job_command",
-        lambda *a, **kw: None,
-    )
+    def acknowledge(connection, job_id):
+        job = Job.fetch(job_id, connection=connection)
+        job.set_status(JobStatus.STOPPED)
+        job.save()
+    monkeypatch.setattr("rq.command.send_stop_job_command", acknowledge)
 
     wm = WorkflowManager.__new__(WorkflowManager)
     wm.workflow_dir = workflow_dir
     wm.logger = Logger(workflow_dir)
-    wm.executor = types.SimpleNamespace(pid_dir=pid_dir)
+    wm.executor = types.SimpleNamespace(pid_dir=pid_dir, cancel_file=workflow_dir / ".cancelled")
     wm._queue_manager = qm
     return wm
 
