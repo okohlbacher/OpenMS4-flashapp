@@ -1,0 +1,8 @@
+{
+  "repository": "https://github.com/OpenMS/FLASHApp",
+  "source_revision": "f8e9eba435ea0843660c63fe86c58c64798e7f71",
+  "submodules": {
+    "openms-streamlit-vue-component": "d98f15a3fd98cd18a09cb324920bf3a5dad1093a"
+  },
+  "note": "Public FLASHApp snapshot imported separately from OpenMS; API/runtime compatibility requires validation."
+}

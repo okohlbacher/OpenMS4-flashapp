@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "dependencies": {
+    "OpenMS": {
+      "version": "4.0.0",
+      "source_revision": "7c029e8cdba6abab503708ecdd56f6ab55e38ce4",
+      "repository": "https://github.com/okohlbacher/OpenMS4-core"
+    },
+    "pyopenms": {
+      "version": "4.0.0.dev0",
+      "source_revision": "8c36beee428789f418554faf7873caa0e5c09bf6",
+      "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
+    },
+    "OpenMSFLASH": {
+      "version": "1.0.0",
+      "source_revision": "781f3639f30da1d762730d9b4f4f1810f74a3681",
+      "repository": "https://github.com/okohlbacher/OpenMS4-flash"
+    }
+  },
+  "binary_artifacts": "Not built; exact source pins are not a binary ABI guarantee."
+}

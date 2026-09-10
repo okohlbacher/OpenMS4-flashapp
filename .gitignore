@@ -1,0 +1,34 @@
+# OpenMS Streamlit template
+workspaces-streamlit-template
+build
+myenv
+build.log
+run_app.spec
+clean-up-workspaces.log
+gdpr_consent/node_modules/
+
+# FLASHApp
+Pipfile
+workspaces-flashtaggerviewer
+
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw*
+
+# Temp files
+**/__pycache__
+.DS_Store
+*-embed-amd64
+get-pip.py
+run_app.bat
+python*
+gdpr_consent/node_modules/
+*~
+.streamlit/secrets.toml
+docs/superpowers/
+.venv/

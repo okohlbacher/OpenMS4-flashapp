@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "core_source_revision": "REPLACE_WITH_PINNED_CORE_COMMIT",
+  "artifacts": [
+    {
+      "path": "pyopenms-4.0.0.dev0-cp312-cp312-linux_x86_64.whl",
+      "sha256": "REPLACE_WITH_BUILT_FILE_SHA256",
+      "kind": "wheel"
+    },
+    {
+      "path": "openms4-runtime-linux-x86_64.tar.gz",
+      "sha256": "REPLACE_WITH_BUILT_FILE_SHA256",
+      "kind": "runtime"
+    }
+  ],
+  "required_executables": [
+    "FLASHDeconv",
+    "FLASHTnT"
+  ]
+}
