@@ -1,17 +1,18 @@
 name: Isolated app contract tests
 on:
   push:
-    branches: [develop]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
   contracts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install isolated test dependencies
@@ -20,10 +21,11 @@ jobs:
         run: python -m pytest tests/test_artifacts.py tests/test_execution_lifecycle.py tests/test_queue_manager_cancel.py tests/test_log_status.py tests/test_deployment_contract.py -v
       # Full UI/scientific tests require verified native artifacts and run separately.
   ordinary-dependencies:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: '3.12'
       - name: Install hash-pinned app dependencies
