@@ -218,20 +218,19 @@ def parseDeconv(
 
 
 def fdr_density_distribution(df):
+    """Return target/decoy KDE curves, or empty x/y frames when undefined.
 
-    # Find density targets
-    target_qscores = df[df['TargetDecoyType'] == 0]['Qscore'].dropna()
-    x_target = np.linspace(target_qscores.min(), target_qscores.max(), 200)
-    kde_target = gaussian_kde(target_qscores)
-    density_target = pd.DataFrame({'x': x_target, 'y': kde_target(x_target)})
-
-    # Find density decoys (if present)
-    decoy_qscores = df[df['TargetDecoyType'] > 0]['Qscore'].dropna()
-    if len(decoy_qscores) > 0:
-        x_decoy = np.linspace(decoy_qscores.min(), decoy_qscores.max(), 200)
-        kde_decoy = gaussian_kde(decoy_qscores)
-        density_decoy = pd.DataFrame({'x': x_decoy, 'y': kde_decoy(x_decoy)})
-    else:
-        density_decoy = pd.DataFrame(columns=['x', 'y'])
-
-    return density_target, density_decoy
+    A density estimate needs at least two distinct finite scores. Empty,
+    singleton and constant groups have no estimate; do not invent a curve by
+    adding jitter to scientific scores. The viewer already accepts empty curves.
+    """
+    densities = []
+    for selection in (df['TargetDecoyType'] == 0, df['TargetDecoyType'] > 0):
+        scores = df.loc[selection, 'Qscore'].dropna()
+        scores = scores[np.isfinite(scores)]
+        if scores.nunique() < 2:
+            densities.append(pd.DataFrame(columns=['x', 'y'], dtype=float))
+        else:
+            x = np.linspace(scores.min(), scores.max(), 200)
+            densities.append(pd.DataFrame({'x': x, 'y': gaussian_kde(scores)(x)}))
+    return tuple(densities)
