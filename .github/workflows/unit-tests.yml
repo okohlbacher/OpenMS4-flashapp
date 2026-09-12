@@ -1,4 +1,4 @@
-name: Isolated app contract tests
+name: App contracts and published wheel
 on:
   push:
     branches: ['**']
@@ -31,7 +31,26 @@ jobs:
       - name: Install hash-pinned app dependencies
         run: |
           python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
-          python -m pip install pytest==9.1.1
+          python -m pip install pytest==9.1.1 fakeredis==2.38.0
+      - name: Select the released pyOpenMS wheel
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          lock = json.loads(Path('experimental/pyopenms-linux-x64.lock.json').read_text())
+          with open(os.environ['GITHUB_ENV'], 'a') as output:
+              output.write(f"WHEEL={lock['artifacts'][0]['path']}\n")
+              output.write(f"WHEEL_RELEASE={lock['release']}\n")
+          PY
+      - name: Download and verify the pinned split wheel
+        run: |
+          mkdir wheel-artifacts
+          curl --fail --location --retry 3 --output "wheel-artifacts/$WHEEL" \
+            "https://github.com/okohlbacher/OpenMS4-pyopenms/releases/download/$WHEEL_RELEASE/$WHEEL"
+          python experimental/verify_artifacts.py experimental/pyopenms-linux-x64.lock.json wheel-artifacts --wheel-only --check-host
+      - name: Install verified wheel
+        run: |
+          python -m pip install --no-deps "wheel-artifacts/$WHEEL"
           python -m pip check
-      - name: Exercise data exchange and existing viewer data helpers
-        run: python -m pytest tests/test_dependency_smoke.py tests/test_manual_upload.py tests/test_render_compression.py tests/test_selection_clear.py tests/test_legal_links.py -v
+      - name: Exercise app tests against the published pyOpenMS wheel
+        run: python -m pytest tests -v

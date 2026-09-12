@@ -50,7 +50,8 @@ execute permission on Unix. The verifier checks ELF/Mach-O/PE architecture, whee
 distribution metadata, embedded source/build identity and SHA-256 digests before
 extraction. It rejects traversal, special files, duplicate members and writes
 through archive links; normal relative library aliases are supported. Universal
-Mach-O archives are currently unsupported and need a target-specific bundle.
+Mach-O archives are currently unsupported and need a target-specific bundle;
+single-architecture fat containers retained by wheel repair are supported.
 
 ```bash
 python experimental/verify_artifacts.py artifacts.lock.json artifacts --check-host
@@ -62,6 +63,39 @@ docker compose up
 The build fails on missing or incompatible artifacts. It installs the ordinary
 Python dependency lock with hash checks and installs only the verified local
 pyOpenMS wheel. Compose runs local workflows and persists `/workspaces`.
+
+## Published pyOpenMS wheel acceptance
+
+The released split pyOpenMS wheel can now be tested independently of the unresolved
+FLASHTnT runtime. The committed `pyopenms-linux-x64.lock.json` and
+`pyopenms-macos-arm64.lock.json` record the ci.2 release wheel SHA-256, exact Core
+and pyOpenMS source pins, and complete Core build identity. The Linux wheel requires
+glibc 2.39 or newer; the ARM macOS wheel requires macOS 26. Both require CPython 3.12.
+
+For example, on Linux x86_64 with Python 3.12:
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
+mkdir -p wheel-artifacts
+gh release download pyopenms-v4.0.0.dev0-ci.2 --repo okohlbacher/OpenMS4-pyopenms \
+  --pattern pyopenms-4.0.0.dev0-cp312-cp312-manylinux_2_39_x86_64.whl --dir wheel-artifacts
+.venv/bin/python experimental/verify_artifacts.py experimental/pyopenms-linux-x64.lock.json \
+  wheel-artifacts --wheel-only --check-host
+.venv/bin/python -m pip install --no-deps wheel-artifacts/*.whl
+.venv/bin/python -m pip check
+.venv/bin/python -m pip install pytest==9.1.1 fakeredis==2.38.0
+.venv/bin/python -m pytest tests -v
+```
+
+Use the macOS lock and `pyopenms-4.0.0.dev0-cp312-cp312-macosx_26_0_arm64.whl`
+on ARM macOS. The artifact directory must contain only the selected wheel.
+`--wheel-only` verifies hashes, source pins, native architecture and build metadata,
+and cannot extract a runtime. Default verification and Docker assembly still require
+the complete runtime including independently pinned FLASHTnT; passing app tests does
+not qualify the missing native workflows or the whole image. The Linux app CI job
+runs this wheel acceptance check on each push and pull request with unchanged
+hash-pinned app requirements.
 
 ## External FLASHTnT boundary
 
@@ -127,4 +161,4 @@ macOS arm64. Its 55 distributions installed successfully with `--require-hashes
 Polars round trip passed with NumPy 2.5.3, pandas 2.2.3, Polars 1.44.2, PyArrow
 19.0.1 and SciPy 1.18.1. The existing upload/compression/selection/legal helpers
 and Compose input tests also passed. Linux wheel installation is a CI gate;
-this local result does not establish compatibility with the pending pyOpenMS4 wheel.
+the released pyOpenMS wheel has a separate acceptance check above.

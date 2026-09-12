@@ -7,6 +7,7 @@ retrieves preset names and descriptions, and applies presets to session state.
 import os
 import sys
 import json
+import importlib.util
 import pytest
 import tempfile
 from pathlib import Path
@@ -24,24 +25,14 @@ sys.path.append(PROJECT_ROOT)
 mock_streamlit = MagicMock()
 mock_streamlit.session_state = {}
 
-# Temporarily replace streamlit in sys.modules so that ParameterManager's
-# `import streamlit as st` picks up the mock. Restore immediately after import
-# so other test files (e.g., test_gui.py AppTest) get the real streamlit.
-_original_streamlit = sys.modules.get('streamlit')
-sys.modules['streamlit'] = mock_streamlit
-
-from src.workflow.ParameterManager import ParameterManager
-
-if _original_streamlit is not None:
-    sys.modules['streamlit'] = _original_streamlit
-else:
-    sys.modules.pop('streamlit', None)
-
-# Remove cached src.workflow modules that were imported with mocked streamlit so
-# that AppTest (in test_gui.py) re-imports them fresh with the real package.
-for _key in list(sys.modules.keys()):
-    if _key.startswith('src.workflow'):
-        sys.modules.pop(_key, None)
+# Load a private copy with mocked Streamlit. Removing the shared workflow
+# modules breaks lifecycle tests whose patches then target a different module.
+_spec = importlib.util.spec_from_file_location(
+    'flashapp_parameter_presets_test', Path(PROJECT_ROOT) / 'src/workflow/ParameterManager.py')
+_module = importlib.util.module_from_spec(_spec)
+with patch.dict(sys.modules, {'streamlit': mock_streamlit}):
+    _spec.loader.exec_module(_module)
+ParameterManager = _module.ParameterManager
 
 
 @pytest.fixture

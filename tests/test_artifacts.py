@@ -109,6 +109,16 @@ class ArtifactValidation(unittest.TestCase):
         for data in (b'plain text', b'MZ' + bytes(100), b'\x7fELF\x02\x00' + bytes(58)):
             with self.assertRaises(ValueError): verify._architecture(data)
 
+    def test_single_slice_macho_container(self):
+        nested = b'\xcf\xfa\xed\xfe' + struct.pack('<I', 0x100000c) + bytes(56)
+        header = b'\xca\xfe\xba\xbe' + struct.pack('>6I', 1, 0x100000c, 0, 28, len(nested), 0)
+        self.assertEqual(verify._architecture(header + nested), ('Darwin', 'aarch64'))
+        for count, machine, offset in [(2, 0x100000c, 28), (1, 0x1000007, 28), (1, 0x100000c, 200)]:
+            with self.subTest(count=count, machine=machine, offset=offset):
+                invalid = b'\xca\xfe\xba\xbe' + struct.pack('>6I', count, machine, 0, offset, len(nested), 0)
+                with self.assertRaises(ValueError):
+                    verify._architecture(invalid + nested)
+
     def test_wheel_missing_or_wrong_metadata_and_native_bindings(self):
         for removed, replacement in [('pyopenms/_build_provenance.json', None),
                                      ('pyopenms/_core.so', None), ('pyopenms.dist-info/METADATA', None),
@@ -147,6 +157,42 @@ class ArtifactValidation(unittest.TestCase):
         verify.extract_runtime(artifacts[0][0], destination)
         self.assertTrue((destination / 'bin/FLASHDeconv').stat().st_mode & stat.S_IXUSR)
         self.assertEqual(json.loads((destination / 'share/openms4/runtime-provenance.json').read_text()), self.runtime)
+
+    def test_wheel_only_does_not_require_or_qualify_external_runtime(self):
+        self.dependencies['external_tools'] = {}
+        self.write()
+        (self.directory / 'runtime.tar.gz').unlink()
+        self.lock['artifacts'] = [entry for entry in self.lock['artifacts'] if entry['kind'] == 'wheel']
+        self.lock.pop('required_executables')
+        self.save_locks()
+        _, artifacts = verify.verified_artifacts(self.lock_path, self.directory, self.dep_path, wheel_only=True)
+        self.assertEqual([kind for _, kind in artifacts], ['wheel'])
+        with self.assertRaisesRegex(ValueError, 'FLASHTnT'):
+            self.check()
+        self.lock['artifacts'][0]['sha256'] = '0' * 64
+        self.save_locks()
+        with self.assertRaisesRegex(ValueError, 'SHA-256 mismatch'):
+            verify.verified_artifacts(self.lock_path, self.directory, self.dep_path, wheel_only=True)
+
+    def test_wheel_only_keeps_source_and_build_checks(self):
+        self.write()
+        (self.directory / 'runtime.tar.gz').unlink()
+        self.lock['artifacts'] = [entry for entry in self.lock['artifacts'] if entry['kind'] == 'wheel']
+        for key, value in [('core_source_revision', '9' * 40), ('build_identity', {})]:
+            original = self.lock[key]
+            self.lock[key] = value
+            self.save_locks()
+            with self.assertRaises(ValueError):
+                verify.verified_artifacts(self.lock_path, self.directory, self.dep_path, wheel_only=True)
+            self.lock[key] = original
+
+    def test_wheel_only_rejects_runtime_and_extraction(self):
+        self.write()
+        with self.assertRaisesRegex(ValueError, 'artifact of each kind'):
+            verify.verified_artifacts(self.lock_path, self.directory, self.dep_path, wheel_only=True)
+        with self.assertRaises(SystemExit):
+            verify.main([str(self.lock_path), str(self.directory), '--wheel-only', '--extract', str(self.root / 'out')])
+        self.assertFalse((self.root / 'out').exists())
 
     def test_each_build_field_mismatch(self):
         for field in verify.CORE_FIELDS:

@@ -1,0 +1,60 @@
+{
+  "schema_version": 2,
+  "release": "pyopenms-v4.0.0.dev0-ci.2",
+  "core_source_revision": "bc9cc12514c768385ce121d6ca4bb710fe1983c4",
+  "pyopenms_source_revision": "52f8726850cc90b52fa21892de82963ae6b5ad72",
+  "artifacts": [
+    {
+      "path": "pyopenms-4.0.0.dev0-cp312-cp312-macosx_26_0_arm64.whl",
+      "sha256": "1c8236b2e3eea1293a97fa6dd5cd79ede41954091fd72ee9f984584fa85df26c",
+      "kind": "wheel"
+    }
+  ],
+  "build_identity": {
+    "build_type": "Release",
+    "system_name": "Darwin",
+    "system_processor": "arm64",
+    "cxx_compiler_id": "AppleClang",
+    "cxx_compiler_version": "17.0.0.17000013",
+    "cxx_standard": 23,
+    "shared_libs": true,
+    "class_testing_enabled": true,
+    "stl_debug": false,
+    "standard_library": "libc++",
+    "libstdcxx_cxx11_abi": null,
+    "msvc_runtime_library": null,
+    "features": {
+      "hdf5": false,
+      "onnx": false,
+      "openmp": true,
+      "openswath": true,
+      "opentims": false,
+      "tdl": false,
+      "thermo_raw": false,
+      "wnetalign": false
+    },
+    "dependencies": {
+      "arrow": {
+        "target": "Arrow::arrow_shared",
+        "version": "23.0.1"
+      },
+      "boost": {
+        "linkage": "shared",
+        "version": "1.89.0"
+      },
+      "curl": {
+        "version": "8.21.0"
+      },
+      "eigen": {
+        "version": "5.0.1"
+      },
+      "openmp": {
+        "version": "5.1"
+      },
+      "parquet": {
+        "target": "Parquet::parquet_shared",
+        "version": "23.0.1"
+      }
+    }
+  }
+}

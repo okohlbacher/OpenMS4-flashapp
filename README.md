@@ -60,6 +60,8 @@ image and shared workspace path, as described in the artifact guide.
 
 A complete image remains gated on a compatible, separately pinned FLASHTnT binary.
 The source fork is identified, but no OpenMS4 binary compatibility is claimed.
+The released pyOpenMS wheel can be installed and tested with the frozen app
+dependencies now; follow the [wheel acceptance instructions](experimental/README.md#published-pyopenms-wheel-acceptance).
 
 ## Legal pages (Impressum, Privacy Policy, Terms of Use)
 

@@ -36,6 +36,18 @@ def _relative(name):
 
 def _architecture(data):
     """Inspect native headers, without running an untrusted binary."""
+    if data.startswith(b'\xca\xfe\xba\xbe') and len(data) >= 28:
+        # delocate can retain a one-slice fat container (e.g. libgcc_s).
+        count, machine, _, offset, size, _ = struct.unpack('>6I', data[4:28])
+        if count != 1 or offset < 28 or size < 8 or len(data) < offset + 8:
+            raise ValueError('Expected one inspectable Mach-O architecture')
+        nested = data[offset:]
+        if nested[:4] not in (b'\xcf\xfa\xed\xfe', b'\xfe\xed\xfa\xcf'):
+            raise ValueError('Expected a Mach-O slice')
+        endian = '<' if nested[0] == 0xcf else '>'
+        if struct.unpack(endian + 'I', nested[4:8])[0] != machine:
+            raise ValueError('Mach-O slice architecture differs from container')
+        return _architecture(nested)
     if data.startswith(b'\x7fELF') and len(data) >= 20:
         if data[5] not in (1, 2):
             raise ValueError('Invalid ELF byte order')
@@ -199,16 +211,17 @@ def _wheel(path, lock, dependencies):
         return core
 
 
-def verified_artifacts(lock_path, directory, dependencies_path=None):
+def verified_artifacts(lock_path, directory, dependencies_path=None, *, wheel_only=False):
     """Return (lock, [(path, kind)]) only after all inputs pass validation."""
     lock = json.loads(Path(lock_path).read_text())
     app_lock = json.loads(Path(dependencies_path or DEFAULT_DEPENDENCIES).read_text())
     dependencies = app_lock['dependencies']
-    external = app_lock.get('external_tools', {}).get('FLASHTnT', {})
-    _sha(external.get('source_revision'), 'External FLASHTnT source')
-    if not external.get('version') or not external.get('repository'):
-        raise ValueError('Separately pinned FLASHTnT version and source repository required')
-    dependencies = dict(dependencies, FLASHTnT=external)
+    if not wheel_only:
+        external = app_lock.get('external_tools', {}).get('FLASHTnT', {})
+        _sha(external.get('source_revision'), 'External FLASHTnT source')
+        if not external.get('version') or not external.get('repository'):
+            raise ValueError('Separately pinned FLASHTnT version and source repository required')
+        dependencies = dict(dependencies, FLASHTnT=external)
     if lock.get('schema_version') != 2:
         raise ValueError('Unsupported artifact lock schema; expected 2')
     for key, dependency in (('core_source_revision', 'OpenMS'), ('pyopenms_source_revision', 'pyopenms')):
@@ -216,18 +229,19 @@ def verified_artifacts(lock_path, directory, dependencies_path=None):
         if lock[key] != dependencies[dependency]['source_revision']:
             raise ValueError(f'Artifact {key} differs from app dependency lock')
     required = set(lock.get('required_executables', []))
-    if not APP_EXECUTABLES.issubset(required):
+    if not wheel_only and not APP_EXECUTABLES.issubset(required):
         raise ValueError('Artifact lock omits an executable required by FLASHApp')
     if any(not re.fullmatch(r'[A-Za-z0-9_-]+', name) for name in required):
         raise ValueError('Invalid executable name')
     directory = Path(directory).resolve()
     artifacts, names, kinds, cores = [], set(), set(), []
+    expected_kinds = {'wheel'} if wheel_only else {'wheel', 'runtime'}
     for entry in lock['artifacts']:
         name, kind = entry['path'], entry.get('kind')
         if not name or name in ('.', '..') or Path(name).name != name or '\\' in name or name in names:
             raise ValueError('Artifact paths must be unique file names')
-        if kind not in {'wheel', 'runtime'} or kind in kinds:
-            raise ValueError('Exactly one wheel and one runtime archive are required')
+        if kind not in expected_kinds or kind in kinds:
+            raise ValueError(f'Exactly one artifact of each kind required: {sorted(expected_kinds)}')
         names.add(name)
         kinds.add(kind)
         _sha(entry.get('sha256'), name, 64)
@@ -240,9 +254,9 @@ def verified_artifacts(lock_path, directory, dependencies_path=None):
             raise ValueError(f'{name}: SHA-256 mismatch')
         cores.append(_wheel(path, lock, dependencies) if kind == 'wheel' else _runtime(path, lock, dependencies, required))
         artifacts.append((path, kind))
-    if kinds != {'wheel', 'runtime'}:
-        raise ValueError('Exactly one wheel and one runtime archive are required')
-    if cores[0] != cores[1]:
+    if kinds != expected_kinds:
+        raise ValueError(f'Exactly one artifact of each kind required: {sorted(expected_kinds)}')
+    if not wheel_only and cores[0] != cores[1]:
         raise ValueError('Runtime and wheel must embed identical Core build provenance')
     extras = {p.name for p in directory.iterdir()} - names
     if extras:
@@ -265,8 +279,12 @@ def main(argv=None):
     parser.add_argument('--dependencies', default=str(DEFAULT_DEPENDENCIES))
     parser.add_argument('--extract')
     parser.add_argument('--check-host', action='store_true')
+    parser.add_argument('--wheel-only', action='store_true',
+                        help='Verify one pinned wheel for app tests; does not qualify a runtime or image')
     args = parser.parse_args(argv)
-    lock, artifacts = verified_artifacts(args.lock, args.directory, args.dependencies)
+    if args.wheel_only and args.extract:
+        parser.error('--extract requires whole-runtime verification')
+    lock, artifacts = verified_artifacts(args.lock, args.directory, args.dependencies, wheel_only=args.wheel_only)
     if args.check_host:
         identity = lock['build_identity']
         normalize = lambda value: {'arm64': 'aarch64', 'AMD64': 'x86_64'}.get(value, value)
