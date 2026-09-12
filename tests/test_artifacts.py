@@ -236,6 +236,18 @@ class ArtifactValidation(unittest.TestCase):
         self.write()
         with self.assertRaisesRegex(ValueError, 'FLASHTnT provenance'): self.check()
 
+    def test_normal_flashtnt_dependency_precedes_legacy_external_pin(self):
+        self.dependencies['dependencies']['FLASHTnT'] = self.dependencies['external_tools'].pop('FLASHTnT')
+        self.write()
+        self.check()
+        self.dependencies['external_tools']['FLASHTnT'] = {'source_revision': '0' * 40}
+        self.save_locks()
+        self.check()
+        self.dependencies['dependencies']['FLASHTnT']['source_revision'] = '9' * 40
+        self.save_locks()
+        with self.assertRaisesRegex(ValueError, 'FLASHTnT provenance'):
+            self.check()
+
     def test_native_architecture_and_execute_permission(self):
         for attribute, value in [('mode', 0o644), ('machine', 183), ('wheel_machine', 183)]:
             with self.subTest(attribute=attribute):

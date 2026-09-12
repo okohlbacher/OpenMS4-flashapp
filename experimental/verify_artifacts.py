@@ -217,7 +217,7 @@ def verified_artifacts(lock_path, directory, dependencies_path=None, *, wheel_on
     app_lock = json.loads(Path(dependencies_path or DEFAULT_DEPENDENCIES).read_text())
     dependencies = app_lock['dependencies']
     if not wheel_only:
-        external = app_lock.get('external_tools', {}).get('FLASHTnT', {})
+        external = dependencies.get('FLASHTnT', app_lock.get('external_tools', {}).get('FLASHTnT', {}))
         _sha(external.get('source_revision'), 'External FLASHTnT source')
         if not external.get('version') or not external.get('repository'):
             raise ValueError('Separately pinned FLASHTnT version and source repository required')

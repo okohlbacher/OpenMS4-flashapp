@@ -69,6 +69,7 @@ def main():
                                QueueManager.QUEUE_NAME], stdout=worker_log, stderr=subprocess.STDOUT,
                               cwd=app_root, env=dict(os.environ, PYTHONPATH=str(app_root)))
     report = {'worker_class': 'rq.worker.SpawnWorker', 'redis_version': queue._redis.info()['redis_version']}
+    children = []
     try:
         wait_for(lambda: queue.get_queue_stats().get('workers') == 1)
         for mode in ('success', 'failure', 'cancel'):
@@ -105,6 +106,8 @@ def main():
         (root / 'acceptance.json').write_text(json.dumps(report, indent=2))
         print(json.dumps(report, indent=2))
     finally:
+        from src.workflow._processes import stop_process_trees
+        stop_process_trees(children, Logger(root))
         worker.terminate()
         try:
             worker.wait(timeout=10)

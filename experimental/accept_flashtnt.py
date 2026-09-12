@@ -21,10 +21,17 @@ def check_identifications(directory):
     """Require the retained TSV interface and positive AQPZ sequence evidence."""
     import pandas as pd
 
-    frames, reference = {}, {}
+    frames, reference, schema_changes = {}, {}, {}
     for name in ('tags.tsv', 'protein.tsv', 'prsms.tsv'):
         expected = pd.read_csv(FIXTURE / name, sep='\t')
         actual = pd.read_csv(directory / name, sep='\t')
+        renamed = {}
+        # The pinned upstream writer renamed the PrSM row index. FLASHApp
+        # parses tags/proteins, but retains this table as a downloadable file.
+        if name == 'prsms.tsv' and 'PrSMIndex' in actual and 'ProteoformIndex' in expected:
+            renamed = {'ProteoformIndex': 'PrSMIndex'}
+            expected = expected.rename(columns=renamed)
+        schema_changes[name] = {'renamed': renamed, 'added': sorted(set(actual.columns) - set(expected.columns))}
         if actual.empty or not set(expected.columns).issubset(actual.columns):
             raise ValueError(f'{name}: nonempty results with the app TSV columns required')
         frames[name] = actual
@@ -58,6 +65,7 @@ def check_identifications(directory):
     return {'tags': len(tags), 'proteins': len(proteins), 'prsms': len(frames['prsms.tsv']),
             'aqpz_tags': len(aqpz_tags), 'top_accession': best['ProteinAccession'],
             'top_score': float(best['Score']), 'reference_comparison': comparison,
+            'schema_changes': schema_changes, 'positive_scientific_checks_passed': True,
             'reference_fields_match': all(item['match'] for item in comparison.values())}
 
 
