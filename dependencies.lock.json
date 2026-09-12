@@ -23,7 +23,7 @@
     },
     "pyopenms": {
       "version": "4.0.0.dev0",
-      "source_revision": "39efd532db4c5c61345bc1359c73c6b766e54b2c",
+      "source_revision": "52f8726850cc90b52fa21892de82963ae6b5ad72",
       "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
     }
   },
