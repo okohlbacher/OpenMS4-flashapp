@@ -5,7 +5,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'experimental'))
-from assemble_linux_runtime import copy_licenses, dependency_paths
+from assemble_linux_runtime import add_needed_aliases, copy_licenses, dependency_paths
 
 
 def test_native_dependency_closure_rejects_unresolved_libraries():
@@ -38,3 +38,18 @@ def test_missing_gcc_recipe_license_requires_installed_exception_and_gpl3(tmp_pa
     copied = copy_licenses(package, tmp_path / 'deps', tmp_path / 'licenses', license)
     assert set(copied) == {str(exception), str(license)}
     assert (tmp_path / 'licenses/COPYING3').read_bytes() == license.read_bytes()
+
+
+def test_needed_alias_is_retained_when_ldd_collapsed_the_same_library(tmp_path, monkeypatch):
+    implementation = tmp_path / 'libopenblas.so.0'
+    implementation.write_bytes(b'Library fixture')
+    alias = tmp_path / 'libblas.so.3'
+    alias.symlink_to(implementation.name)
+    libraries = {implementation.name: implementation}
+    monkeypatch.setattr('assemble_linux_runtime.subprocess.check_output',
+                        lambda *args, **kwargs: '0x1 (NEEDED) Shared library: [libblas.so.3]')
+    add_needed_aliases(libraries, [], [tmp_path])
+    assert libraries['libblas.so.3'].resolve() == implementation
+    alias.unlink()
+    with pytest.raises(ValueError, match='Missing or conflicting DT_NEEDED alias'):
+        add_needed_aliases({implementation.name: implementation}, [], [tmp_path])

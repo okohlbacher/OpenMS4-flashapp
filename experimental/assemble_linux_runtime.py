@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tarfile
@@ -64,6 +65,28 @@ def copy_licenses(package, deps, destination, gcc_license=None):
     return {str(path): digest(path) for path in sources}
 
 
+def add_needed_aliases(libraries, executables, prefixes):
+    """ldd merges loaded SONAME aliases; retain each actual DT_NEEDED filename."""
+    pending = [*executables, *libraries.values()]
+    seen = set()
+    while pending:
+        path = pending.pop().resolve()
+        if path in seen:
+            continue
+        seen.add(path)
+        dynamic = subprocess.check_output(['readelf', '-d', str(path)], text=True)
+        for name in re.findall(r'\(NEEDED\).*?\[([^]]+)\]', dynamic):
+            if not re.fullmatch(r'[A-Za-z0-9_.+-]+', name) or name in ('.', '..'):
+                raise ValueError(f'Expected a library basename in DT_NEEDED: {name}')
+            if name in SYSTEM_LIBRARIES or name in libraries:
+                continue
+            candidates = [prefix / name for prefix in prefixes if (prefix / name).is_file()]
+            if not candidates or len({digest(candidate) for candidate in candidates}) != 1:
+                raise ValueError(f'Missing or conflicting DT_NEEDED alias: {name}')
+            libraries[name] = candidates[0]
+            pending.append(candidates[0])
+
+
 def assemble(args):
     work, source, deps, output = [p.resolve() for p in (args.work, args.source, args.dependencies, args.output)]
     sdk, results = work / 'sdk', work / 'results'
@@ -114,6 +137,8 @@ def assemble(args):
             if soname in libraries and digest(libraries[soname]) != digest(library):
                 raise ValueError(f'Conflicting library: {soname}')
             libraries[soname] = library
+    add_needed_aliases(libraries, [sdk / 'bin' / name for name in APP_EXECUTABLES],
+                      [sdk / 'lib', deps / 'lib'])
     for soname, library in libraries.items():
         resolved = library.resolve()
         if not resolved.is_relative_to(sdk) and not resolved.is_relative_to(deps):
