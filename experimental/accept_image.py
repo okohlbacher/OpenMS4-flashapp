@@ -8,12 +8,14 @@ import json
 from pathlib import Path
 import platform
 import subprocess
+import sys
 import tempfile
 import time
 
 
 def main():
     started = time.perf_counter()
+    sys.path.insert(0, '/app')
     import pyopenms
     provenance = json.loads((Path(pyopenms.__file__).parent / '_build_provenance.json').read_text())
     runtime = json.loads(Path('/opt/openms4/share/openms4/runtime-provenance.json').read_text())
