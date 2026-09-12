@@ -12,7 +12,7 @@ import tempfile
 import time
 import types
 import unittest
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import psutil
 
@@ -31,7 +31,7 @@ class Parameters:
 def workflow_manager_class():
     """Replace UI/data constructors only; execute the real manager methods."""
     source = Path(__file__).resolve().parents[1] / 'src/workflow/WorkflowManager.py'
-    replacements = {'streamlit': types.SimpleNamespace(session_state={})}
+    replacements = {'streamlit': types.SimpleNamespace(session_state={}, warning=Mock())}
     for name, cls in [('ParameterManager', Parameters), ('FileManager', Mock), ('StreamlitUI', Mock)]:
         replacements['src.workflow.' + name] = types.SimpleNamespace(**{name: cls})
     spec = importlib.util.spec_from_file_location('src.workflow._manager_test', source)
@@ -186,7 +186,9 @@ class ExecutionLifecycle(unittest.TestCase):
         # The real enqueue can succeed before the client loses its reply.
         for lose_after_enqueue in (False, True):
             with self.subTest(lose_after_enqueue=lose_after_enqueue):
+                (self.root / '.job_id').unlink(missing_ok=True)
                 manager = self.manager(); manager.name = 'Fixture'
+                manager.parameter_manager = Mock()
                 manager.execution_settings = {'online_deployment': True, 'max_threads': {'online': 2}}
                 qm = queue_module.QueueManager.__new__(queue_module.QueueManager)
                 qm._redis = fakeredis.FakeStrictRedis(); qm._queue = Queue(connection=qm._redis)
@@ -199,6 +201,7 @@ class ExecutionLifecycle(unittest.TestCase):
                 # The reconstructed test class module is intentionally isolated;
                 # RQ only stores its name here and does not execute it.
                 with patch.object(qm._queue, 'enqueue', side_effect=lost_reply), \
+                     patch.object(qm, 'submission_lock', return_value=MagicMock()), \
                      patch.object(manager, '_start_workflow_local') as local, \
                      patch.dict(manager._start_workflow_queued.__globals__, st=types.SimpleNamespace(warning=Mock())):
                     manager._start_workflow_queued()

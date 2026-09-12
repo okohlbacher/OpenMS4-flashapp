@@ -57,42 +57,58 @@ class WorkflowManager:
         Online mode: Submits to Redis queue
         Local mode: Spawns multiprocessing.Process (existing behavior)
         """
-        # Flush the latest session state to params.json so the worker
-        # (queued) or the forked child (local) sees the values the user
-        # just selected, not stale disk state from a previous fragment run.
-        self.parameter_manager.save_parameters()
-        if self._queue_manager and self._queue_manager.is_available:
+        if self._queue_manager or self._is_online_mode():
+            # An unavailable queue does not establish that its previous job
+            # never started. Never start a second local copy in online mode.
             self._start_workflow_queued()
         else:
+            self.parameter_manager.save_parameters()
             self._start_workflow_local()
 
     def _start_workflow_queued(self) -> None:
         """Submit workflow to Redis queue (online mode)"""
         from .tasks import execute_workflow
 
-        # Generate unique job ID based on workflow directory
-        job_id = f"workflow-{self.workflow_dir.name}-{uuid.uuid4().hex}"
+        try:
+            if self._queue_manager is None:
+                raise ConnectionError("Queue connection unavailable")
+            with self._queue_manager.submission_lock(self.workflow_dir) as lock:
+                previous_id = self._queue_manager.load_job_id(self.workflow_dir)
+                if previous_id:
+                    previous = self._queue_manager.get_job_info(previous_id)
+                    if previous is None:
+                        raise ConnectionError("Saved job is absent from Redis; reconcile its outcome before starting again")
+                    if previous.status.value not in ("finished", "failed", "canceled"):
+                        st.warning("This workflow already has an active job. Its identity has been retained.")
+                        return
+                if self.executor.pid_dir.exists() and any(self.executor.pid_dir.iterdir()):
+                    raise RuntimeError("Process ownership records remain; confirm that the previous workflow has stopped")
 
-        # Clear cancellation only when starting a new run.
-        self.executor.cancel_file.unlink(missing_ok=True)
-        # Enqueue acknowledgement can be lost after Redis accepted the job.
-        # Preserve the caller-generated identity before making that request.
-        self._queue_manager.store_job_id(self.workflow_dir, job_id)
-        submitted_id = self._queue_manager.submit_job(
-            func=execute_workflow,
-            kwargs={
-                "workflow_dir": str(self.workflow_dir),
-                "workflow_class": self.__class__.__name__,
-                "workflow_module": self.__class__.__module__,
-                "settings": {key: self.execution_settings[key] for key in
-                             ("online_deployment", "max_threads") if key in self.execution_settings},
-            },
-            job_id=job_id,
-            description=f"Workflow: {self.name}"
-        )
-
-        if submitted_id is None:
-            st.warning("Queue submission could not be confirmed. The job ID is retained while its status is checked.")
+                # A status lookup can outlive the short lease. Renew only if
+                # still owned, before changing parameters or the saved job ID.
+                lock.reacquire()
+                self.parameter_manager.save_parameters()
+                job_id = f"workflow-{self.workflow_dir.name}-{uuid.uuid4().hex}"
+                # Persist before enqueue: a lost reply must not permit retry
+                # with a new ID, even when Redis currently reports no such job.
+                self._queue_manager.store_job_id(self.workflow_dir, job_id)
+                self.executor.cancel_file.unlink(missing_ok=True)
+                submitted_id = self._queue_manager.submit_job(
+                    func=execute_workflow,
+                    kwargs={
+                        "workflow_dir": str(self.workflow_dir),
+                        "workflow_class": self.__class__.__name__,
+                        "workflow_module": self.__class__.__module__,
+                        "settings": {key: self.execution_settings[key] for key in
+                                     ("online_deployment", "max_threads") if key in self.execution_settings},
+                    },
+                    job_id=job_id,
+                    description=f"Workflow: {self.name}"
+                )
+                if submitted_id is None:
+                    st.warning("Queue submission could not be confirmed. The job ID is retained while its status is checked.")
+        except Exception as error:
+            st.warning(f"Workflow was not resubmitted; existing job identity is retained. {error}")
 
     def _start_workflow_local(self) -> None:
         """Start workflow as local process (existing behavior for local mode)"""
@@ -185,8 +201,11 @@ class WorkflowManager:
                         "error": job_info.error,
                     }
                 else:
-                    # Job not found, clear the stored job ID
-                    self._queue_manager.clear_job_id(self.workflow_dir)
+                    # Missing can mean an uncertain enqueue or an expired RQ
+                    # record, not proof that the previous run never started.
+                    return {"running": True, "status": "unavailable", "job_id": job_id,
+                            "progress": None, "current_step": "Saved job outcome requires reconciliation",
+                            "queue_position": None, "queue_length": None}
 
         # Fallback: check PID files (local mode)
         pid_dir = self.executor.pid_dir
@@ -225,7 +244,8 @@ class WorkflowManager:
         .job_id is intentionally left in place: get_job_info will report
         the canceled status to the UI so _show_queue_status can render the
         Cancelled pill. Resubmission overwrites it; RQ's result_ttl
-        eventually evicts the job and get_workflow_status self-heals.
+        eventually evicts the job; an unconfirmed outcome then requires explicit
+        reconciliation instead of silently permitting another submission.
 
         Returns:
             True when owned children are stopped and any queued job stop is acknowledged.

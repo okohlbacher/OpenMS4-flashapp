@@ -8,6 +8,7 @@ Only activates when running in online mode with Redis available.
 
 import os
 import time
+import hashlib
 from ._settings import load_settings, online_mode
 from typing import Optional, Callable, Any
 from dataclasses import dataclass
@@ -84,9 +85,13 @@ class QueueManager:
 
         try:
             from redis import Redis
+            from redis.backoff import NoBackoff
+            from redis.retry import Retry
             from rq import Queue
 
-            self._redis = Redis.from_url(os.environ.get("REDIS_URL", self.REDIS_URL))
+            self._redis = Redis.from_url(os.environ.get("REDIS_URL", self.REDIS_URL),
+                                         socket_connect_timeout=3, socket_timeout=3,
+                                         retry=Retry(NoBackoff(), 0))
             self._redis.ping()  # Test connection
             self._queue = Queue(self.QUEUE_NAME, connection=self._redis)
         except ImportError:
@@ -102,6 +107,13 @@ class QueueManager:
     def is_available(self) -> bool:
         """Check if queue system is available"""
         return self._is_online and self._queue is not None
+
+    def submission_lock(self, workflow_dir: Path):
+        """Serialize submissions sharing one workflow directory, without waiting."""
+        if not self.is_available:
+            raise ConnectionError("Queue connection unavailable")
+        identity = hashlib.sha256(str(Path(workflow_dir).resolve()).encode()).hexdigest()
+        return self._redis.lock(f"{self.QUEUE_NAME}:submission:{identity}", timeout=30, blocking=False)
 
     def submit_job(
         self,
