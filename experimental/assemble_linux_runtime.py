@@ -19,6 +19,12 @@ from verify_artifacts import APP_EXECUTABLES, verified_artifacts
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {'cli': 'OpenMSCLI', 'topp': 'OpenMSTOPP', 'flash': 'OpenMSFLASH', 'flashtnt': 'FLASHTnT'}
+CORE_NOTICES = (
+    'extern/evergreen/LICENSE', 'extern/GTE/LICENSE', 'extern/Quadtree/LICENSE',
+    'extern/IsoSpec/LICENSE', 'extern/eol-bspline/LICENSE', 'extern/nlohmann_json/LICENSE.MIT',
+    'extern/SQLiteCpp/LICENSE.txt', 'extern/simde/COPYING',
+    'thirdparty/percolator/LICENSE-Apache-2.0.txt', 'thirdparty/percolator/NOTICE-percolator.txt',
+)
 SYSTEM_LIBRARIES = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1',
                     'libresolv.so.2', 'ld-linux-x86-64.so.2'}
 
@@ -64,6 +70,21 @@ def copy_licenses(package, deps, destination, gcc_license=None):
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, target)
     return {str(path): digest(path) for path in sources}
+
+
+def copy_core_notices(source, destination, features):
+    """Retain original static/header-only notices absent from the SDK install."""
+    paths = [source / 'src/openms' / name for name in CORE_NOTICES]
+    if features['tdl']:
+        paths.extend(source / 'src/openms/extern/tool_description_lib/LICENSES' / (name + '.txt')
+                     for name in ('Apache-2.0', 'BSD-3-Clause', 'CC0-1.0', 'CC-BY-4.0'))
+    copied = {}
+    for path in paths:
+        target = destination / path.relative_to(source / 'src/openms')
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, target)
+        copied[str(path)] = digest(path)
+    return copied
 
 
 def add_needed_aliases(libraries, executables, prefixes):
@@ -124,7 +145,14 @@ def assemble(args):
         installed.update(manifest.read_text().splitlines())
         receipt['records'][name + '-install_manifest.txt'] = digest(manifest)
         shutil.copy2(checkout / 'License.txt', metadata / f'{name}-LICENSE')
-    shutil.copy2(source / graph['core']['path'] / 'LICENSE', metadata / 'core-LICENSE')
+    core_source = source / graph['core']['path']
+    core_head = subprocess.check_output(['git', '-C', str(core_source), 'rev-parse', 'HEAD'], text=True).strip()
+    core_dirty = subprocess.check_output(['git', '-C', str(core_source), 'status', '--porcelain'], text=True)
+    if core_dirty or core_head != core['source_revision'] or core_head != app['OpenMS']['source_revision']:
+        raise ValueError('Core notice source must be clean and match the installed SDK')
+    shutil.copy2(core_source / 'LICENSE', metadata / 'core-LICENSE')
+    receipt['licenses']['core-source-notices'] = copy_core_notices(
+        core_source, metadata / 'licenses/core-source-notices', core['features'])
     libraries = {}
     environment = dict(os.environ, LD_LIBRARY_PATH=os.pathsep.join([str(sdk / 'lib'), str(deps / 'lib')]))
     for name in sorted(APP_EXECUTABLES):
@@ -157,14 +185,20 @@ def assemble(args):
     # Keep the actual conda recipe/license texts for every copied dependency.
     needed = {str(path.resolve().relative_to(deps)) for path in libraries.values() if path.resolve().is_relative_to(deps)}
     covered = set()
+    header_only = {'eigen': core['dependencies']['eigen']['version']}
     for path in sorted((deps / 'conda-meta').glob('*.json')):
         package = json.loads(path.read_text())
         provided = needed.intersection(package.get('files', []))
-        if not provided:
+        if package['name'] in header_only:
+            if package['version'] != header_only.pop(package['name']):
+                raise ValueError(f'Header-only dependency version differs from Core: {package["name"]}')
+        elif not provided:
             continue
         receipt['licenses'][path.stem] = copy_licenses(
             package, deps, metadata / 'licenses' / path.stem, args.gcc_license)
         covered.update(provided)
+    if header_only:
+        raise ValueError(f'Header-only dependency licenses unavailable: {sorted(header_only)}')
     if needed - covered:
         raise ValueError(f'Dependency license metadata missing: {sorted(needed - covered)}')
     provenance = {'schema_version': 1, 'core': core,

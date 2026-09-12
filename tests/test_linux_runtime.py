@@ -5,7 +5,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'experimental'))
-from assemble_linux_runtime import add_needed_aliases, copy_licenses, dependency_paths
+from assemble_linux_runtime import CORE_NOTICES, add_needed_aliases, copy_core_notices, copy_licenses, dependency_paths
 
 
 def test_native_dependency_closure_rejects_unresolved_libraries():
@@ -54,3 +54,18 @@ def test_needed_alias_is_retained_when_ldd_collapsed_the_same_library(tmp_path, 
     alias.unlink()
     with pytest.raises(ValueError, match='Missing or conflicting DT_NEEDED alias'):
         add_needed_aliases({implementation.name: implementation}, [], [tmp_path])
+
+
+def test_core_embedded_notices_are_original_and_missing_notice_blocks_assembly(tmp_path):
+    source, output = tmp_path / 'core', tmp_path / 'runtime'
+    for name in CORE_NOTICES:
+        path = source / 'src/openms' / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('Original notice: ' + name)
+    copied = copy_core_notices(source, output, {'tdl': False})
+    notice = source / 'src/openms/thirdparty/percolator/NOTICE-percolator.txt'
+    assert str(notice) in copied
+    assert (output / 'thirdparty/percolator/NOTICE-percolator.txt').read_bytes() == notice.read_bytes()
+    notice.unlink()
+    with pytest.raises(FileNotFoundError):
+        copy_core_notices(source, output, {'tdl': False})
