@@ -1,5 +1,13 @@
 # FLASHApp validation record — 2026-09-10
 
+This is the original isolated-test record. Later evidence is in the
+[published wheel record](pyopenms-ci2.md), [live Redis/RQ check](live-queue.json),
+and [native AQPZ workflow comparison](flashtnt-aqpz.json). The full app suite at
+`7b5d46a` passed 114 tests and 49 subtests in 2.55 seconds on macOS arm64 with the
+released ci.2 wheel. Native Linux workflow execution now succeeds; numerical
+equivalence to the historical AQPZ outputs remains unqualified. The observations
+and coverage numbers below are retained as measured on September 10.
+
 The final isolated suite passed **72 tests and 46 subcases**. Results are in
 [test-results.txt](test-results.txt). Coverage uses coverage.py 7.16.0 with both
 thread and multiprocessing tracing; parent and controlled local-workflow traces
