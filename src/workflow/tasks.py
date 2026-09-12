@@ -152,6 +152,7 @@ def execute_workflow(
 
         return {
             "success": False,
+            "cancelled": executor is not None and executor.cancel_file.exists(),
             "workflow_dir": str(workflow_path),
             "error": error_msg
         }

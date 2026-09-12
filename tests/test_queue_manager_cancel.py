@@ -49,6 +49,19 @@ def _force_started(job: Job, worker_name: str = "rq:worker:test-worker") -> None
     job.save()
 
 
+@pytest.mark.parametrize('cancelled, expected', [(True, 'canceled'), (False, 'finished')])
+def test_finished_worker_preserves_explicit_cancellation_result(cancelled, expected):
+    from rq.results import Result
+    qm = _make_queue_manager()
+    job = qm._queue.enqueue(os.getcwd, job_id='finished-after-tool-stopped')
+    job.set_status(JobStatus.FINISHED)
+    Result.create(job, Result.Type.SUCCESSFUL, ttl=60,
+                  return_value={'success': False, 'cancelled': cancelled})
+    info = qm.get_job_info(job.id)
+    assert info.status.value == expected
+    assert info.result['success'] is False
+
+
 def test_cancel_queued_job_marks_it_canceled():
     qm = _make_queue_manager()
     qm._queue.enqueue(os.getcwd, job_id="queued-job")

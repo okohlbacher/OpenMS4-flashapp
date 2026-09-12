@@ -261,6 +261,19 @@ class ExecutionLifecycle(unittest.TestCase):
                 self.assertEqual(result['success'], outcome is True)
                 self.assertEqual('WORKFLOW FINISHED' in (self.root / 'logs/minimal.log').read_text(), outcome is True)
 
+    def test_worker_preserves_cancelled_outcome_before_rq_stop(self):
+        class Workflow:
+            def execution(self):
+                self.executor.cancel_file.touch()
+                raise RuntimeError('Workflow was cancelled')
+        replacements = {'src.workflow.ParameterManager': types.SimpleNamespace(ParameterManager=Parameters),
+                        'src.workflow.FileManager': types.SimpleNamespace(FileManager=Mock),
+                        'workflow_fixture': types.SimpleNamespace(Workflow=Workflow)}
+        with patch.dict(sys.modules, replacements), patch('rq.get_current_job', return_value=None):
+            result = tasks.execute_workflow(str(self.root), 'Workflow', 'workflow_fixture', settings={})
+        self.assertFalse(result['success'])
+        self.assertTrue(result['cancelled'])
+
     def test_real_workflows_reject_missing_inputs(self):
         source = Path(__file__).resolve().parents[1] / 'src/Workflow.py'
         tree = ast.parse(source.read_text())

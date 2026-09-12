@@ -184,6 +184,11 @@ class QueueManager:
             }
 
             status = status_map.get(job.get_status(), JobStatus.QUEUED)
+            result = job.result if status == JobStatus.FINISHED else None
+            # Stopping the owned tool can let the workflow return before the
+            # worker receives RQ's stop message. Preserve that cancellation.
+            if isinstance(result, dict) and result.get("cancelled") is True:
+                status = JobStatus.CANCELED
 
             # Get progress from job meta
             meta = job.meta or {}
@@ -204,7 +209,7 @@ class QueueManager:
                 current_step=current_step,
                 queue_position=queue_position,
                 queue_length=queue_length,
-                result=job.result if status == JobStatus.FINISHED else None,
+                result=result,
                 error=str(job.exc_info) if job.exc_info else None,
                 enqueued_at=str(job.enqueued_at) if job.enqueued_at else None,
                 started_at=str(job.started_at) if job.started_at else None,

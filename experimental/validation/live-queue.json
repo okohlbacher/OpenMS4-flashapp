@@ -1,0 +1,17 @@
+{
+  "date": "2026-09-12",
+  "platform": "macOS 26 arm64",
+  "python": "3.12.14",
+  "rq": "2.12.0",
+  "worker_class": "rq.worker.SpawnWorker",
+  "redis": "8.10.1",
+  "redis_image": "redis@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576",
+  "network_binding": "127.0.0.1:16387",
+  "success": {"wall_seconds": 0.6542, "rq_status": "finished", "app_status": "finished", "success": true},
+  "failure": {"wall_seconds": 0.5983, "rq_status": "finished", "app_status": "finished", "success": false, "cancelled": false},
+  "cancel": {"wall_seconds": 0.6668, "rq_status": "finished", "app_status": "canceled", "success": false, "cancelled": true},
+  "cancelled_children_exited": true,
+  "cancellation_log_written": true,
+  "worker_and_redis_container_removed": true,
+  "limits": ["Controlled Python tool, not a scientific workflow", "No live transport-loss or hard-kill-window qualification", "Linux RQ fork worker not exercised"]
+}

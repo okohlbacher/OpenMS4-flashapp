@@ -134,6 +134,26 @@ remove them only after independently confirming the old process has exited.
 
 ## Validation
 
+The [live queue acceptance](validation/live-queue.json) now exercises a real RQ
+SpawnWorker against an isolated Redis instance: controlled command success,
+failure, and cancellation with an owned child and descendant. It exposed a race
+where the worker returned its cancellation before RQ's stop message arrived;
+the worker result now preserves that cancellation so the UI displays Cancelled.
+This check covers macOS SpawnWorker, not Linux fork-worker or transport-loss cases.
+Reproduce against a dedicated, empty Redis database (the harness rejects a
+nonempty database):
+
+```bash
+docker run --rm --detach --name flashapp-queue-test --publish 127.0.0.1:16387:6379 \
+  redis@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576 \
+  redis-server --save '' --appendonly no
+REDIS_URL=redis://127.0.0.1:16387/0 python experimental/accept_live_queue.py --output /tmp/flashapp-queue-test
+docker stop flashapp-queue-test
+```
+
+Use a new output directory for each run. The script stops its worker on exit;
+the caller stops Redis. Full image and scientific workflow gates remain separate.
+
 ```bash
 python -m unittest discover -s tests -p test_artifacts.py -v
 python -m pytest tests/test_execution_lifecycle.py tests/test_queue_manager_cancel.py tests/test_log_status.py -v
