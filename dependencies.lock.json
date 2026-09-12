@@ -25,15 +25,12 @@
       "version": "4.0.0.dev0",
       "source_revision": "52f8726850cc90b52fa21892de82963ae6b5ad72",
       "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
+    },
+    "FLASHTnT": {
+      "version": "1.0.0",
+      "source_revision": "250debbc26565b51ef861ccaa8132b9e11b4f8d9",
+      "repository": "https://github.com/okohlbacher/OpenMS4-flashtnt"
     }
   },
-  "binary_artifacts": "Image assembly remains gated on a compatible FLASHTnT artifact and a completely matching verified runtime/wheel lock. See experimental/validation/README.md.",
-  "external_tools": {
-    "FLASHTnT": {
-      "repository": "https://github.com/t0mdavid-m/OpenMS",
-      "source_revision": "3f508829ad81c91354d397966f28d428e29e5329",
-      "version": null,
-      "status": "Source identified; compatible OpenMS4 binary and reported package version remain required before image assembly."
-    }
-  }
+  "binary_artifacts": "Native Linux FLASHTnT and FLASHApp parsing run against the pinned SDK. Numerical equivalence to the historical example remains unqualified. Image assembly still requires a complete matching verified runtime/wheel lock; see experimental/README.md."
 }

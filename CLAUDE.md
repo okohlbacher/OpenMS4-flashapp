@@ -81,7 +81,7 @@ The container entrypoint starts **Redis** + one or more **RQ workers** (queue `o
 ### CI (`.github/workflows/`)
 
 - `build-and-test.yml` — manual verification of an explicitly supplied `flashapp-artifacts` bundle from a workflow run. It does not build or publish images. The original upstream build/deployment workflow is archived at `experimental/build-and-test.upstream.yml`.
-- `unit-tests.yml` — isolated contracts plus the complete app pytest suite against the hash-pinned published Linux pyOpenMS wheel and frozen app requirements. Wheel acceptance does not qualify the missing FLASHTnT runtime or publish an image. The legacy lint, Windows packaging and registry-GC workflows are not active in this split repository.
+- `unit-tests.yml` — isolated contracts plus the complete app pytest suite against the hash-pinned published Linux pyOpenMS wheel and frozen app requirements. Native FLASHTnT has separate AQPZ acceptance; wheel acceptance does not qualify a complete runtime archive or publish an image. The legacy lint, Windows packaging and registry-GC workflows are not active in this split repository.
 
 ## Conventions & gotchas
 

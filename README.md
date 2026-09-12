@@ -58,8 +58,9 @@ Open `http://localhost:8501`. Workspaces persist in a named volume. Compose runs
 local workflows; online execution requires Redis and RQ workers with the same
 image and shared workspace path, as described in the artifact guide.
 
-A complete image remains gated on a compatible, separately pinned FLASHTnT binary.
-The source fork is identified, but no OpenMS4 binary compatibility is claimed.
+A complete image still requires an assembled, verified native runtime archive.
+The separately pinned FLASHTnT package now builds against Core and runs the native
+Linux app workflow; numerical equivalence to the retained example remains unqualified.
 The released pyOpenMS wheel can be installed and tested with the frozen app
 dependencies now; follow the [wheel acceptance instructions](experimental/README.md#published-pyopenms-wheel-acceptance).
 

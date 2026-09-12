@@ -138,6 +138,10 @@ def main():
         raise ValueError('App parser did not retain protein, tag and sequence-view results')
     report.update({'mode': 'raw-workflow' if args.raw_workflow else 'tagging-and-parsing',
                    'wall_seconds': time.perf_counter() - started, 'executables': executables,
+                   'binary_sha256': {name: hashlib.sha256(Path(path).read_bytes()).hexdigest()
+                                     for name, path in executables.items()},
+                   'dependency_pins': json.loads((ROOT / 'dependencies.lock.json').read_text())['dependencies'],
+                   'scientific_parameters': {tool: parameters[tool] for tool in ('FLASHDeconv', 'FLASHTnT')},
                    'fixture_sha256': {path.name: hashlib.sha256(path.read_bytes()).hexdigest()
                                       for path in (FIXTURE / 'database.fasta', FIXTURE / 'out_deconv.mzML', RAW)}})
     (output / 'acceptance.json').write_text(json.dumps(report, indent=2) + '\n')
