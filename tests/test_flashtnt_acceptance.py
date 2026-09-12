@@ -11,3 +11,4 @@ def test_retained_aqpz_identification_is_a_positive_control():
     assert result['top_accession'] == 'AQPZ'
     assert result['top_score'] == 505
     assert result['aqpz_tags'] > 0
+    assert result['reference_fields_match']

@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Run the installed FLASHTnT through FLASHApp against its retained AQPZ example."""
 import argparse
+from collections import Counter
 import hashlib
 import json
+import math
 import multiprocessing
 import os
 from pathlib import Path
@@ -19,16 +21,17 @@ def check_identifications(directory):
     """Require the retained TSV interface and positive AQPZ sequence evidence."""
     import pandas as pd
 
-    frames = {}
+    frames, reference = {}, {}
     for name in ('tags.tsv', 'protein.tsv', 'prsms.tsv'):
         expected = pd.read_csv(FIXTURE / name, sep='\t')
         actual = pd.read_csv(directory / name, sep='\t')
         if actual.empty or not set(expected.columns).issubset(actual.columns):
             raise ValueError(f'{name}: nonempty results with the app TSV columns required')
         frames[name] = actual
+        reference[name] = expected
     proteins = frames['protein.tsv']
     best = proteins.loc[proteins['Score'].idxmax()]
-    expected_aqpz = pd.read_csv(FIXTURE / 'protein.tsv', sep='\t').query('ProteinAccession == "AQPZ"').iloc[0]
+    expected_aqpz = reference['protein.tsv'].query('ProteinAccession == "AQPZ"').iloc[0]
     if best['ProteinAccession'] != 'AQPZ' or best['Score'] <= 0:
         raise ValueError('The AQPZ example must identify AQPZ as its highest-scoring protein')
     if best['DatabaseSequence'] != expected_aqpz['DatabaseSequence']:
@@ -37,9 +40,25 @@ def check_identifications(directory):
     aqpz_tags = tags[tags['ProteinAccession'].fillna('').str.split(';').apply(lambda values: 'AQPZ' in values)]
     if aqpz_tags.empty or not (aqpz_tags['Length'] >= 4).all():
         raise ValueError('Expected identified AQPZ tags of at least four residues')
+    comparison = {name + '_rows': {'actual': len(frames[name]), 'reference': len(reference[name]),
+                                   'match': len(frames[name]) == len(reference[name])}
+                  for name in frames}
+    actual_sequences = Counter(tags['TagSequence'])
+    reference_sequences = Counter(reference['tags.tsv']['TagSequence'])
+    comparison['tag_sequence_counts'] = {'match': actual_sequences == reference_sequences,
+        'extra_count': sum((actual_sequences - reference_sequences).values()),
+        'missing_count': sum((reference_sequences - actual_sequences).values())}
+    for field in ('Score', 'PrecursorMass', 'ProteoformMass', 'MatchingFragments', 'Coverage(%)',
+                  'StartPosition', 'EndPosition'):
+        actual, expected = float(best[field]), float(expected_aqpz[field])
+        comparison['best_' + field] = {'actual': actual, 'reference': expected,
+                                       'match': math.isclose(actual, expected, rel_tol=1e-6, abs_tol=1e-6)}
+    comparison['best_matched_sequence'] = {'actual': best['ProteinSequence'],
+        'reference': expected_aqpz['ProteinSequence'], 'match': best['ProteinSequence'] == expected_aqpz['ProteinSequence']}
     return {'tags': len(tags), 'proteins': len(proteins), 'prsms': len(frames['prsms.tsv']),
             'aqpz_tags': len(aqpz_tags), 'top_accession': best['ProteinAccession'],
-            'top_score': float(best['Score'])}
+            'top_score': float(best['Score']), 'reference_comparison': comparison,
+            'reference_fields_match': all(item['match'] for item in comparison.values())}
 
 
 def main():
@@ -116,6 +135,8 @@ def main():
     (output / 'acceptance.json').write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
     files.cache_connection.close()
+    if not report['reference_fields_match']:
+        raise ValueError('Scientific reference fields differ; inspect acceptance.json before qualifying this port')
 
 
 if __name__ == '__main__':
