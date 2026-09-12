@@ -36,14 +36,19 @@ def main():
             assert 'not found' not in libraries and '/scratch/' not in libraries
             checks[name] = round(time.perf_counter() - tool_started, 3)
     from streamlit.testing.v1 import AppTest
-    app = AppTest.from_file('/app/app.py').run(timeout=90)
-    assert not app.exception, str(app.exception)
     workflow_pages = []
-    for name in ('FLASHDeconv', 'FLASHTnT'):
-        app.switch_page(f'content/{name}/{name}Workflow.py').run(timeout=90)
-        assert not app.exception and not app.error, str(app.exception)
-        assert any(button.label == 'Start Workflow' for button in app.button), f'{name}: missing Run controls'
-        workflow_pages.append(name)
+    with tempfile.TemporaryDirectory(prefix='flashapp-image-ui-') as workspace:
+        app = AppTest.from_file('/app/app.py')
+        settings = json.loads(Path('/app/settings.json').read_text())
+        settings['workspaces_dir'] = workspace
+        app.session_state['settings'] = settings
+        app.run(timeout=90)
+        assert not app.exception, str(app.exception)
+        for name in ('FLASHDeconv', 'FLASHTnT'):
+            app.switch_page(f'content/{name}/{name}Workflow.py').run(timeout=90)
+            assert not app.exception and not app.error, str(app.exception)
+            assert any(button.label == 'Start Workflow' for button in app.button), f'{name}: missing Run controls'
+            workflow_pages.append(name)
     report = {'python': platform.python_version(), 'machine': platform.machine(), 'libc': platform.libc_ver(),
               'pyopenms_source': provenance['source_revision'], 'runtime_core_source': runtime['core']['source_revision'],
               'core_metadata_matches': True, 'builder_files_absent': True, 'help_and_ini_wall_seconds': checks,
