@@ -1,5 +1,6 @@
 """Controlled children and isolated workflow/worker tests, without scientific SDKs."""
 import ast
+import gc
 from concurrent.futures import ThreadPoolExecutor
 import importlib.util
 import json
@@ -38,6 +39,27 @@ def workflow_manager_class():
     module = importlib.util.module_from_spec(spec)
     with patch.dict(sys.modules, replacements): spec.loader.exec_module(module)
     return module.WorkflowManager
+
+
+class SpawnWorkflow(workflow_manager_class()):
+    """Importable worker exercising the real manager with a controlled native child."""
+    def __init__(self, root, bootstrap='delayed'):
+        self.workflow_dir = Path(root)
+        self.logger = Logger(self.workflow_dir)
+        self.executor = CommandExecutor(self.workflow_dir, self.logger, Parameters(root), {})
+        self._queue_manager = None
+        self.bootstrap = bootstrap
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self.bootstrap == 'failure':
+            raise RuntimeError('controlled spawn bootstrap failure')
+        time.sleep(.25 if self.bootstrap == 'delayed' else 30)
+
+    def execution(self):
+        owner = self.executor.pid_dir / str(os.getpid())
+        (self.workflow_dir / 'owner_seen').write_text(owner.read_text())
+        return self.executor.run_command([sys.executable, '-c', 'import time; time.sleep(.2); print("spawn child finished")'])
 
 
 class ExecutionLifecycle(unittest.TestCase):
@@ -247,6 +269,53 @@ class ExecutionLifecycle(unittest.TestCase):
         self.assertFalse(manager.executor.pid_dir.exists())
         self.assertIn('WORKFLOW FINISHED', (self.root / 'logs/minimal.log').read_text())
         self.assertTrue(all(not child.is_alive() for child in children))
+
+    def test_spawn_ack_survives_manager_disposal_and_reaps_child(self):
+        manager = SpawnWorkflow(self.root)
+        context = multiprocessing.get_context('spawn')
+        children = []
+        def process(*args, **kwargs):
+            child = context.Process(*args, **kwargs); children.append(child); return child
+        with patch.object(multiprocessing, 'Process', process):
+            manager._start_workflow_local()
+        del manager
+        gc.collect()  # Model a Streamlit rerun dropping the workflow instance.
+        pid = children[0].pid
+        deadline = time.monotonic() + 10
+        # Do not call join/is_alive/exitcode here: the production reaper must do it.
+        while psutil.pid_exists(pid) and time.monotonic() < deadline: time.sleep(.01)
+        self.assertFalse(psutil.pid_exists(pid), 'workflow process was not reaped')
+        self.assertIn('create_time', json.loads((self.root / 'owner_seen').read_text()))
+        self.assertFalse((self.root / 'pids').exists())
+        self.assertIn('WORKFLOW FINISHED', (self.root / 'logs/minimal.log').read_text())
+
+    def test_spawn_startup_failures_leave_no_owner_or_native_child(self):
+        context = multiprocessing.get_context('spawn')
+        for failure in ('bootstrap', 'registration', 'ack_timeout'):
+            with self.subTest(failure=failure):
+                manager = SpawnWorkflow(self.root, 'failure' if failure == 'bootstrap' else 'blocked')
+                children = []
+                def process(*args, **kwargs):
+                    child = context.Process(*args, **kwargs); children.append(child); return child
+                real_pipe = multiprocessing.Pipe
+                def pipe():
+                    parent, child = real_pipe()
+                    if failure == 'ack_timeout':
+                        bounded = Mock(wraps=parent)
+                        bounded.poll.side_effect = lambda timeout: parent.poll(.1)
+                        return bounded, child
+                    return parent, child
+                registration = Mock(side_effect=OSError('registration failed')) if failure == 'registration' else _processes.record_process
+                with patch.object(multiprocessing, 'Process', process), \
+                     patch.object(multiprocessing, 'Pipe', pipe), \
+                     patch.dict(manager._start_workflow_local.__globals__, record_process=registration):
+                    with self.assertRaises((EOFError, OSError, RuntimeError)):
+                        manager._start_workflow_local()
+                self.assertFalse(psutil.pid_exists(children[0].pid))
+                self.assertFalse((self.root / 'pids').exists())
+                self.assertFalse((self.root / 'owner_seen').exists())
+                self.assertFalse(manager.get_workflow_status()['running'])
+                self.assertIn('ERROR: Workflow process failed to start', (self.root / 'logs/minimal.log').read_text())
 
     def test_worker_false_none_and_exception_are_failures(self):
         replacements = {'src.workflow.ParameterManager': types.SimpleNamespace(ParameterManager=Parameters),

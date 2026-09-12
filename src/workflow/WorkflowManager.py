@@ -6,6 +6,7 @@ from .CommandExecutor import CommandExecutor
 from .StreamlitUI import StreamlitUI
 from .FileManager import FileManager
 import multiprocessing
+import threading
 import shutil
 import uuid
 import traceback
@@ -121,30 +122,44 @@ class WorkflowManager:
         # Establish ownership storage before the child can launch a tool.
         self.executor.pid_dir.mkdir(parents=True)
         self.executor.cancel_file.unlink(missing_ok=True)
-        ready = multiprocessing.Event()
-        workflow_process = multiprocessing.Process(target=self.workflow_process, args=(ready,))
+        parent, child = multiprocessing.Pipe()
+        workflow_process = multiprocessing.Process(target=self.workflow_process, args=(child,))
         try:
             workflow_process.start()
+            child.close()
             record_process(self.executor.pid_dir, workflow_process.pid)
-            ready.set()
-        except BaseException:
-            if workflow_process.pid is not None and workflow_process.is_alive():
-                workflow_process.terminate()
+            parent.send(True)
+            if not parent.poll(10) or parent.recv() is not True:
+                raise RuntimeError("Workflow process did not acknowledge startup")
+            # Keep the Process alive across Streamlit reruns and reap it on exit.
+            threading.Thread(target=workflow_process.join, daemon=True).start()
+        except BaseException as error:
+            if workflow_process.pid is not None:
+                if workflow_process.is_alive():
+                    workflow_process.terminate()
                 workflow_process.join(timeout=3)
                 if workflow_process.is_alive():
                     workflow_process.kill()
                     workflow_process.join()
             stop_processes(self.executor.pid_dir, self.logger)
+            self.logger.log(f"ERROR: Workflow process failed to start: {error}")
             raise
+        finally:
+            parent.close()
+            child.close()
 
     def workflow_process(self, ready=None) -> None:
         """
         Workflow process. Logs start and end of the workflow and calls the execution method where all steps are defined.
         """
-        if ready is not None and not ready.wait(timeout=10):
-            self.logger.log("ERROR: Workflow ownership registration timed out")
-            return
         try:
+            if ready is not None:
+                try:
+                    if not ready.poll(10) or ready.recv() is not True:
+                        raise RuntimeError("Workflow ownership registration timed out")
+                    ready.send(True)
+                finally:
+                    ready.close()
             self.logger.log("STARTING WORKFLOW")
             results_dir = Path(self.workflow_dir, "results")
             if results_dir.exists():
@@ -157,8 +172,9 @@ class WorkflowManager:
         except Exception as e:
             self.logger.log(f"ERROR: {e}")
             self.logger.log("".join(traceback.format_exception(e)))
-        # Delete pid dir path to indicate workflow is done
-        shutil.rmtree(self.executor.pid_dir, ignore_errors=True)
+        finally:
+            # Delete pid dir path to indicate workflow is done, even if logging fails.
+            shutil.rmtree(self.executor.pid_dir, ignore_errors=True)
 
     def get_workflow_status(self) -> dict:
         """
