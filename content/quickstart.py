@@ -67,7 +67,7 @@ def render_flash_cli_tools_box():
     cols = render_download_box(
         container_key="flash_cli_tools_container",
         title="FLASH* Command Line Tools",
-        description="Access FLASH* tools (FLASHDeconv, FLASHTnT, etc.) through the command line interface as part of OpenMS.",
+        description="FLASHDeconv is provided by the separate OpenMS4 FLASH package, built with the OpenMS4 Core SDK. FLASHTnT is a separate experimental package with access restricted to project collaborators.",
         icon=""
     )
     
@@ -75,8 +75,8 @@ def render_flash_cli_tools_box():
     with cols[1]:
 
         st.link_button(
-            "📥 Download Command Line Tools",
-            "https://abibuilder.cs.uni-tuebingen.de/archive/openms/OpenMSInstaller/experimental/FVdeploy/",
+            "FLASH Package and Installation",
+            "https://github.com/okohlbacher/OpenMS4-flash",
             use_container_width=True,
             type="secondary",   # matches the solid/primary button look
         )
@@ -86,7 +86,10 @@ def render_flash_cli_tools_box():
     st.markdown(
         """
         <div style="text-align: center; margin-top: 1rem; color: #6c757d;">
-            FLASH* tools are a part of the OpenMS TOPP tools and can be used via command line interface for advanced custom automated workflows and scripting.
+            Use the <a href="https://github.com/okohlbacher/OpenMS4-core">matching Core SDK</a>
+            and follow each package's installation instructions for automated workflows and scripting.
+            The <a href="https://github.com/okohlbacher/OpenMS4-flashtnt">experimental FLASHTnT repository</a>
+            requires project access; a public standalone download is not available yet.
         </div>
         """,
         unsafe_allow_html=True,
