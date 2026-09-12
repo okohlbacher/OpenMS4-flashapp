@@ -126,7 +126,7 @@ def main():
             'out_tag': [str(directory / 'tags.tsv')], 'out_pro': [str(directory / 'protein.tsv')],
             'out_prsm': [str(directory / 'prsms.tsv')]})
         dataset = 'aqpz'
-        files.store_file(dataset, 'FTnT_parameters_json', FIXTURE / 'FTnT_parameters.json')
+        files.store_file(dataset, 'FTnT_parameters_json', FIXTURE / 'FTnT_parameters.json', remove=False)
         parseDeconv(files, dataset, str(FIXTURE / 'out_deconv.mzML'), str(FIXTURE / 'anno_annotated.mzML'),
                     spec2_tsv=str(FIXTURE / 'spec2.tsv'), logger=logger)
         parseTnT(files, dataset, str(FIXTURE / 'out_deconv.mzML'), str(FIXTURE / 'anno_annotated.mzML'),
