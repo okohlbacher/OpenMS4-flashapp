@@ -47,7 +47,8 @@ def test_needed_alias_is_retained_when_ldd_collapsed_the_same_library(tmp_path, 
     alias.symlink_to(implementation.name)
     libraries = {implementation.name: implementation}
     monkeypatch.setattr('assemble_linux_runtime.subprocess.check_output',
-                        lambda *args, **kwargs: '0x1 (NEEDED) Shared library: [libblas.so.3]')
+                        lambda *args, **kwargs: '0x1 (NEEDED) Shared library: [libblas.so.3]\n'
+                                               '0x2 (NEEDED) Shared library: [ld-linux-x86-64.so.2]')
     add_needed_aliases(libraries, [], [tmp_path])
     assert libraries['libblas.so.3'].resolve() == implementation
     alias.unlink()

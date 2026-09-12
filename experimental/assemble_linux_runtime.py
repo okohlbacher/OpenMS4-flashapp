@@ -19,7 +19,8 @@ from verify_artifacts import APP_EXECUTABLES, verified_artifacts
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = {'cli': 'OpenMSCLI', 'topp': 'OpenMSTOPP', 'flash': 'OpenMSFLASH', 'flashtnt': 'FLASHTnT'}
-SYSTEM_LIBRARIES = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1', 'libresolv.so.2'}
+SYSTEM_LIBRARIES = {'libc.so.6', 'libm.so.6', 'libdl.so.2', 'libpthread.so.0', 'librt.so.1',
+                    'libresolv.so.2', 'ld-linux-x86-64.so.2'}
 
 
 def digest(path):
