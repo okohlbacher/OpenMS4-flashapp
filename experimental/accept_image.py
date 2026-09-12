@@ -36,10 +36,17 @@ def main():
     from streamlit.testing.v1 import AppTest
     app = AppTest.from_file('/app/app.py').run(timeout=90)
     assert not app.exception, str(app.exception)
+    workflow_pages = []
+    for name in ('FLASHDeconv', 'FLASHTnT'):
+        app.switch_page(f'content/{name}/{name}Workflow.py').run(timeout=90)
+        assert not app.exception and not app.error, str(app.exception)
+        assert any(button.label == 'Start Workflow' for button in app.button), f'{name}: missing Run controls'
+        workflow_pages.append(name)
     report = {'python': platform.python_version(), 'machine': platform.machine(), 'libc': platform.libc_ver(),
               'pyopenms_source': provenance['source_revision'], 'runtime_core_source': runtime['core']['source_revision'],
               'core_metadata_matches': True, 'builder_files_absent': True, 'help_and_ini_wall_seconds': checks,
-              'streamlit_quickstart_exceptions': len(app.exception), 'wall_seconds': time.perf_counter() - started}
+              'streamlit_quickstart_exceptions': 0, 'workflow_configuration_and_run_controls': workflow_pages,
+              'wall_seconds': time.perf_counter() - started}
     print('IMAGE_SMOKE_JSON')
     print(json.dumps(report, indent=2))
 

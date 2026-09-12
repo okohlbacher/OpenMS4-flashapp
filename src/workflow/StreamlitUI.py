@@ -865,30 +865,28 @@ class StreamlitUI:
                 param = poms.Param()
                 poms.ParamXMLFile().load(str(ini_file_path), param)
                 for key, value in custom_defaults.items():
-                    encoded_key = f"{topp_tool_name}:1:{key}".encode()
-                    if encoded_key in param.keys():
-                        param.setValue(encoded_key, value)
+                    param_key = f"{topp_tool_name}:1:{key}"
+                    if param_key in param.keys():
+                        param.setValue(param_key, value)
                 poms.ParamXMLFile().store(str(ini_file_path), param)
 
         # read into Param object
         param = poms.Param()
         poms.ParamXMLFile().load(str(ini_file_path), param)
 
-        def _matches_parameter(pattern: str, key: bytes) -> bool:
+        def _matches_parameter(pattern: str, key: str) -> bool:
             """
             Match pattern against TOPP parameter key using suffix matching.
 
-            Key format: b"ToolName:1:section:subsection:param_name"
+            Key format: "ToolName:1:section:subsection:param_name"
 
             Returns True if pattern matches the end of the param path,
             bounded by ':' or start of path.
             """
             pattern = pattern.lstrip(":")  # Strip legacy leading colon
-            key_str = key.decode()
-
             # Extract param path after "ToolName:1:"
-            parts = key_str.split(":")
-            param_path = ":".join(parts[2:]) if len(parts) > 2 else key_str
+            parts = key.split(":")
+            param_path = ":".join(parts[2:]) if len(parts) > 2 else key
 
             # Check if pattern matches as a suffix, bounded by ':' or start
             return param_path == pattern or param_path.endswith(":" + pattern)
@@ -908,8 +906,8 @@ class StreamlitUI:
             key
             for key in param.keys()
             if not (
-                b"input file" in param.getTags(key)
-                or b"output file" in param.getTags(key)
+                "input file" in param.getTags(key)
+                or "output file" in param.getTags(key)
                 or any([_matches_parameter(k, key) for k in excluded_keys])
             )
         ]
@@ -926,22 +924,22 @@ class StreamlitUI:
         for key in valid_keys:
             entry = param.getEntry(key)
             p = {
-                "name": entry.name.decode(),
+                "name": entry.name,
                 "key": key,
                 "value": entry.value,
                 "original_is_list": isinstance(entry.value, list),
-                "valid_strings": [v.decode() for v in entry.valid_strings],
-                "description": entry.description.decode(),
-                "advanced": (b"advanced" in param.getTags(key)),
+                "valid_strings": entry.valid_strings,
+                "description": entry.description,
+                "advanced": ("advanced" in param.getTags(key)),
                 "non_included": key not in included_keys,
                 "section_description": param.getSectionDescription(
-                    ":".join(key.decode().split(":")[:-1])
+                    ":".join(key.split(":")[:-1])
                 ),
             }
             # Parameter sections and subsections as string (e.g. "section:subsection")
             if display_subsections:
                 p["sections"] = ":".join(
-                    p["key"].decode().split(":1:")[1].split(":")[:-1]
+                    p["key"].split(":1:")[1].split(":")[:-1]
                 )
             params.append(p)
 
@@ -949,7 +947,7 @@ class StreamlitUI:
         # if a parameter with custom default value exists, use that value
         # else check if the parameter is already in self.params, if yes take the value from self.params
         for p in params:
-            name = p["key"].decode().split(":1:")[1]
+            name = p["key"].split(":1:")[1]
             if topp_tool_name in self.params:
                 if name in self.params[topp_tool_name]:
                     p["value"] = self.params[topp_tool_name][name]
@@ -1019,7 +1017,7 @@ class StreamlitUI:
             i = 0
             for p in params:
                 # get key and name
-                key = f"{self.parameter_manager.topp_param_prefix}{p['key'].decode()}"
+                key = f"{self.parameter_manager.topp_param_prefix}{p['key']}"
                 name = p["name"]
                 try:
                     # sometimes strings with newline, handle as list
