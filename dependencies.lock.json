@@ -28,7 +28,7 @@
     },
     "FLASHTnT": {
       "version": "1.0.0",
-      "source_revision": "250debbc26565b51ef861ccaa8132b9e11b4f8d9",
+      "source_revision": "4ca4e73a975152f863084ddb8576d40f1241133a",
       "repository": "https://github.com/okohlbacher/OpenMS4-flashtnt"
     }
   },

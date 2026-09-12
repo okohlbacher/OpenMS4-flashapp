@@ -1,5 +1,6 @@
 {
   "date": "2026-09-12",
+  "qualification_status": "Historical run only: later AddressSanitizer checks found two out-of-bounds reads in native 250debb. Superseded by the fixes included in FLASHTnT 4ca4e73a975152f863084ddb8576d40f1241133a; these numerical outputs are not qualified.",
   "app_source_revision": "7b5d46a1f2adda545419dae7ed0a403d17874b13",
   "platform": "Linux x86_64, IBMI dax, node-local /scratch",
   "logical_cpus": 384,
