@@ -1,0 +1,33 @@
+{
+  "date": "2026-09-13",
+  "source_repository": "https://github.com/t0mdavid-m/openms-streamlit-vue-component",
+  "source_revision": "d98f15a3fd98cd18a09cb324920bf3a5dad1093a",
+  "source_dirty": false,
+  "node": "26.8.2",
+  "npm": "11.19.1",
+  "package_lock_sha256": "920e28a4a431279bffc8a340ba6ab5543d333d20f2020d401275d615455e3d8a",
+  "commands": [
+    "npm ci --ignore-scripts --no-audit --no-fund",
+    "npm run build",
+    "npm run test:unit -- --run"
+  ],
+  "type_check_passed": true,
+  "production_build_passed": true,
+  "vite_build_seconds": 4.77,
+  "unit_test_status": "No test files found; Vitest exited1",
+  "warnings": [
+    "Inherited Tabulator Sass division deprecations",
+    "Main minified JavaScript exceeds500kB"
+  ],
+  "previous_bundle_matches_rebuilt_output": false,
+  "files": {
+    "assets/index-a9a1feea.css": "a9a1feeac828433c0361837822344827849ee6631313d70d4e08d6cf2bb7f84c",
+    "assets/index-dc8ff380.js": "6bbb5da0af4de025644a0be46a102370f435eb2cf9453ae622f36ba8875af827",
+    "assets/materialdesignicons-webfont-67d24abe.eot": "67d24abeb10cd3450a734730cec5130aacc98ac44d3622c6ac8a48bc34985118",
+    "assets/materialdesignicons-webfont-80bb28b3.woff": "80bb28b30acbf54abe37ab633808be054db36c45db7c1b3868ecb8bac36f832e",
+    "assets/materialdesignicons-webfont-a58ecb54.ttf": "a58ecb54f45eec1afadbc21314d1f0932cf009e5cbc7f3225d7e4a4e1b71ef6b",
+    "assets/materialdesignicons-webfont-c1c004a9.woff2": "c1c004a90e60a31becd3ca261781c3a13a2937b5b26338fd8dd89e10ab562849",
+    "favicon.ico": "db74ab0b78338c1f778f8398c45f4103c99aea0e845a3118a7750b4eeafd3445",
+    "index.html": "dfea8ed460aec82e55cc7f92fe4a8e9a9b343ecfe3e9853664769a59e2ac72e8"
+  }
+}

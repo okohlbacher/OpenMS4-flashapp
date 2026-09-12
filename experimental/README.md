@@ -156,6 +156,14 @@ enqueue; a lost acknowledgement never starts a duplicate local workflow. Cancell
 checks owned descendants, and waits for RQ acknowledgement; failure preserves
 recoverable records instead of declaring success.
 
+Queued starts serialize the saved job identity check and enqueue under a Redis
+submission lock. Only a confirmed terminal job with no remaining process records
+permits a rerun. A missing or expired saved job is unavailable, rather than proof
+that execution ended: retain `.job_id` until an operator independently confirms
+the job and owned children have stopped. The 30-second submission lease is renewed
+after lookup; UI Redis calls use a three-second timeout without retries. Queue
+outages never switch an online submission to local execution.
+
 A hard-killed RQ work-horse can still be interrupted in the short interval between
 starting a tool and recording its identity. The marker and descendant checks
 reduce this window but are not an orphan-proof supervisor. Live Redis/RQ
@@ -184,6 +192,38 @@ docker stop flashapp-queue-test
 
 Use a new output directory for each run. The script stops its worker on exit;
 the caller stops Redis. Full image and scientific workflow gates remain separate.
+
+The concurrent queued-start test can also use a dedicated empty Redis database:
+`FLASHAPP_TEST_REDIS_URL=redis://127.0.0.1:16387/0 python -m pytest tests/test_queued_starts.py -q`.
+At `2eaad619`, all 14 focused tests passed in 0.19 seconds, including exactly one
+enqueue for concurrent starts and rejection after a real expired submission lease.
+
+## Linux runtime assembly
+
+`assemble_linux_runtime.py` consumes an already-tested native graph build, its
+clean source checkouts and original conda license cache. It selects the three
+app executables and their resolved non-system ELF libraries, copies runtime data
+and tool registries, checks the trusted builder records against the app pins and
+verifies the complete runtime/wheel contract. Run it on the Linux builder:
+
+```bash
+python experimental/assemble_linux_runtime.py --work /scratch/build/work \
+  --source /scratch/build/source --dependencies /scratch/dependencies \
+  --wheel /scratch/wheels/pyopenms-4.0.0.dev0-cp312-cp312-manylinux_2_39_x86_64.whl \
+  --wheel-lock experimental/pyopenms-linux-x64.lock.json --output /scratch/flashapp-inputs
+```
+
+Use a new output directory. The resulting `artifacts.lock.json` and `artifacts/`
+are image inputs. Loading uses the image's `/opt/openms4/lib` search path; native
+execution must still be tested in isolation from the SDK and conda prefixes.
+This assembly record trusts the builder and does not prove arbitrary object files
+were produced from the claimed source. A Python 3.12 base must also meet the
+wheel's glibc minimum; Debian bookworm is too old for the released Linux wheel.
+
+The committed Vue bundle was rebuilt from the exact submodule commit using its
+unchanged npm lock. [Build evidence](validation/vue-build.json) records its source,
+tool versions and output hashes. Production build and type checking passed; the
+upstream checkout contains no unit tests. No frontend dependency upgrade was made.
 
 ```bash
 python -m unittest discover -s tests -p test_artifacts.py -v
