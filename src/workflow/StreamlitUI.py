@@ -266,9 +266,7 @@ class StreamlitUI:
 
             if not TK_AVAILABLE:
                 c2.warning(
-                    "**Warning**: Failed to import tkinter, either it is not installed, or this is being called from a cloud context. "
-                    "This function is not available in a Streamlit Cloud context. "
-                    "You will have to manually enter the path to the folder with the MS files."
+                    "Folder picker is unavailable here. Upload files or enter the server folder path."
                 )
 
             if not use_copy:
