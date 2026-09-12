@@ -5,7 +5,7 @@ import sys
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'experimental'))
-from assemble_linux_runtime import dependency_paths
+from assemble_linux_runtime import copy_licenses, dependency_paths
 
 
 def test_native_dependency_closure_rejects_unresolved_libraries():
@@ -22,3 +22,19 @@ def test_native_dependency_closure_rejects_unresolved_libraries():
 def test_absolute_or_relative_dependency_paths_cannot_be_silently_omitted(entry):
     with pytest.raises(ValueError, match='Expected a library basename'):
         dependency_paths(entry)
+
+
+def test_missing_gcc_recipe_license_requires_installed_exception_and_gpl3(tmp_path):
+    exception = tmp_path / 'deps/share/licenses/gcc/RUNTIME.LIBRARY.EXCEPTION'
+    exception.parent.mkdir(parents=True)
+    exception.write_text('Exception fixture')
+    package = {'name': 'libgcc', 'license': 'GPL-3.0-only WITH GCC-exception-3.1',
+               'link': {'source': str(tmp_path / 'absent-cache')},
+               'files': ['share/licenses/gcc/RUNTIME.LIBRARY.EXCEPTION']}
+    with pytest.raises(ValueError, match='complete GPL3'):
+        copy_licenses(package, tmp_path / 'deps', tmp_path / 'licenses')
+    license = tmp_path / 'COPYING3'
+    license.write_text('License fixture: Version 3, 29 June 2007')
+    copied = copy_licenses(package, tmp_path / 'deps', tmp_path / 'licenses', license)
+    assert set(copied) == {str(exception), str(license)}
+    assert (tmp_path / 'licenses/COPYING3').read_bytes() == license.read_bytes()

@@ -43,6 +43,27 @@ def dependency_paths(output):
     return found
 
 
+def copy_licenses(package, deps, destination, gcc_license=None):
+    """Use original recipe licenses, or installed license texts with provenance."""
+    cached = Path(package['link']['source']) / 'info/licenses'
+    if cached.is_dir():
+        sources = {path: path.relative_to(cached) for path in cached.rglob('*') if path.is_file()}
+    else:
+        sources = {deps / name: Path(name) for name in package.get('files', [])
+                   if 'license' in name.lower() and (deps / name).is_file()}
+        if package.get('license') == 'GPL-3.0-only WITH GCC-exception-3.1':
+            if not sources or gcc_license is None or 'Version 3, 29 June 2007' not in gcc_license.read_text():
+                raise ValueError('GCC runtime requires its installed exception and a complete GPL3 license text')
+            sources[gcc_license] = Path('COPYING3')
+    if not sources:
+        raise ValueError(f'Original dependency license texts unavailable: {package["name"]}')
+    for source, relative in sources.items():
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+    return {str(path): digest(path) for path in sources}
+
+
 def assemble(args):
     work, source, deps, output = [p.resolve() for p in (args.work, args.source, args.dependencies, args.output)]
     sdk, results = work / 'sdk', work / 'results'
@@ -58,7 +79,7 @@ def assemble(args):
     metadata = runtime / 'share/openms4'
     metadata.mkdir(parents=True)
     receipt = {'trust': 'Clean source and successful guarded build/install records from the trusted builder',
-               'records': {}, 'files': {}, 'system_libraries': sorted(SYSTEM_LIBRARIES)}
+               'records': {}, 'files': {}, 'licenses': {}, 'system_libraries': sorted(SYSTEM_LIBRARIES)}
     installed = set()
     for name, package in PACKAGES.items():
         pin = app[package]
@@ -115,10 +136,8 @@ def assemble(args):
         provided = needed.intersection(package.get('files', []))
         if not provided:
             continue
-        license_dir = Path(package['link']['source']) / 'info/licenses'
-        if not license_dir.is_dir():
-            raise ValueError(f'Original dependency license directory unavailable: {license_dir}')
-        shutil.copytree(license_dir, metadata / 'licenses' / path.stem)
+        receipt['licenses'][path.stem] = copy_licenses(
+            package, deps, metadata / 'licenses' / path.stem, args.gcc_license)
         covered.update(provided)
     if needed - covered:
         raise ValueError(f'Dependency license metadata missing: {sorted(needed - covered)}')
@@ -149,4 +168,6 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('work', 'source', 'dependencies', 'output', 'wheel', 'wheel-lock'):
         parser.add_argument('--' + name, required=True, type=Path)
+    parser.add_argument('--gcc-license', type=Path,
+                        help='Complete GPL3 text if GCC runtime recipes only installed their exception text')
     assemble(parser.parse_args())

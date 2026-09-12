@@ -219,6 +219,10 @@ execution must still be tested in isolation from the SDK and conda prefixes.
 This assembly record trusts the builder and does not prove arbitrary object files
 were produced from the claimed source. A Python 3.12 base must also meet the
 wheel's glibc minimum; Debian bookworm is too old for the released Linux wheel.
+If GCC runtime recipes retain only their installed exception text, supply
+`--gcc-license /path/to/original/COPYING3` from the trusted dependency cache.
+The receipt records the license source paths and hashes; absent license texts
+stop assembly.
 
 The committed Vue bundle was rebuilt from the exact submodule commit using its
 unchanged npm lock. [Build evidence](validation/vue-build.json) records its source,
