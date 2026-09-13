@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   contracts:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.OPENMS_RUNNER_LINUX_X64 || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -21,7 +21,7 @@ jobs:
         run: python -m pytest tests/test_artifacts.py tests/test_execution_lifecycle.py tests/test_queue_manager_cancel.py tests/test_log_status.py tests/test_deployment_contract.py -v
       # Full UI/scientific tests require verified native artifacts and run separately.
   ordinary-dependencies:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ vars.OPENMS_RUNNER_LINUX_X64 || 'ubuntu-24.04' }}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
