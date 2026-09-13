@@ -153,6 +153,10 @@ the identical app image, settings, and shared workspace volume/path. Set the sam
 Redis, nginx, cron, or an embedded supervisor. The archived entrypoint scripts
 assume the old upstream image and must not be used with this recipe.
 
+Local workers acknowledge ownership registration over a pipe before starting tools;
+a retained process join reaps completed children across Streamlit reruns. This avoids
+the discarded-semaphore race exposed by the actual image UI.
+
 The UI and worker use the same execution-mode/thread settings. Nonzero commands
 raise; worker `False`, `None` and exception outcomes are failures. Job lookup
 transport errors retain `.job_id`. The caller-generated job ID is persisted before
@@ -226,7 +230,10 @@ wheel's glibc minimum; Debian bookworm is too old for the released Linux wheel.
 If GCC runtime recipes retain only their installed exception text, supply
 `--gcc-license /path/to/original/COPYING3` from the trusted dependency cache.
 The receipt records the license source paths and hashes; absent license texts
-stop assembly.
+stop assembly. Core source must also be clean and match the installed SDK. Original
+notices for statically embedded/header-only Core components and Percolator are
+copied from that source; Eigen is included from its exact-version conda recipe
+even though it has no dynamic library in the loader closure.
 
 The committed Vue bundle was rebuilt from the exact submodule commit using its
 unchanged npm lock. [Build evidence](validation/vue-build.json) records its source,
@@ -241,8 +248,9 @@ python -m pytest tests/test_execution_lifecycle.py tests/test_queue_manager_canc
 These isolated tests need pytest, psutil, rq, redis and fakeredis; they need no
 OpenMS build or pyOpenMS import. Artifact fixtures contain small native headers
 and exercise rejection paths; they are not executable scientific binaries.
-Lifecycle tests launch only controlled Python children. The local owner-ordering
-test uses `fork` where available. Full UI/scientific tests additionally require
+Lifecycle tests launch only controlled Python children. Real `spawn` tests cover
+local ownership registration, delayed bootstrap, failed startup and process reaping;
+the earlier owner-ordering test also uses `fork` where available. Full UI/scientific tests additionally require
 the actual verified wheel/runtime and app requirements. App dependency resolution,
 image assembly, native ABI loading, live queue cancellation, and scientific result
 correctness are distinct acceptance checks; passing one does not imply the others.

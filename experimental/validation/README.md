@@ -1,12 +1,14 @@
-# FLASHApp validation record — 2026-09-10
+# FLASHApp validation index
 
-This is the original isolated-test record. Later evidence is in the
-[published wheel record](pyopenms-ci2.md), [live Redis/RQ check](live-queue.json),
-and [native AQPZ workflow comparison](flashtnt-aqpz.json). The full app suite at
-`7b5d46a` passed 114 tests and 49 subtests in 2.55 seconds on macOS arm64 with the
-released ci.2 wheel. Native Linux workflow execution now succeeds; numerical
-equivalence to the historical AQPZ outputs remains unqualified. The observations
-and coverage numbers below are retained as measured on September 10.
+For the current port, read the [current acceptance status](current-status.md).
+The measurements below are the original September 10 isolated-test record;
+its remaining gates and coverage numbers are historical, not a current blocker list.
+Later evidence includes the [published wheel record](pyopenms-ci2.md),
+[live Redis/RQ check](live-queue.json), and [Vue build record](vue-build.json).
+The original [AQPZ comparison](flashtnt-aqpz.json) is explicitly unqualified:
+later sanitizer tests found native memory errors in that older executable.
+
+## Historical isolated-test record — 2026-09-10
 
 The final isolated suite passed **72 tests and 46 subcases**. Results are in
 [test-results.txt](test-results.txt). Coverage uses coverage.py 7.16.0 with both
@@ -61,7 +63,7 @@ This is useful regression coverage, not complete workflow or platform coverage.
 - Compose accepted an explicit image input and rejected a missing one. These
   checks parsed configuration only; they did not pull images, build or start Docker.
 
-## Remaining acceptance gates
+## Historical acceptance gates — 2026-09-10
 
 The compatible FLASHTnT binary/version and separately pinned external provenance
 are still unavailable. The public source fork is identified in the artifact guide.

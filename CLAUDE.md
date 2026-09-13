@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **FLASHTnT** (🧨) — tag-and-track top-down identification: runs FLASHDeconv, then matches short sequence "tags" against a protein FASTA database to identify proteins (PrSMs), with target/decoy FDR.
 - **FLASHQuant** (📊) — proteoform quantification from FLASHDeconv mass traces (view-only; no run step).
 
-The heavy lifting is done by **TOPP command-line tools** (`FLASHDeconv`, `FLASHTnT`, `DecoyDatabase`) required by the Docker image; the app drives them, parses their output into pandas DataFrames, caches them per workspace, and renders them through a custom **Vue.js Streamlit component** (`flash_viewer_grid`).
+The heavy lifting is done by **split command-line packages** (`FLASHDeconv`, `FLASHTnT`, `DecoyDatabase`) required by the Docker image; the app drives them, parses their output into pandas DataFrames, caches them per workspace, and renders them through a custom **Vue.js Streamlit component** (`flash_viewer_grid`).
 
 ## Commands and build boundary
 
@@ -74,9 +74,14 @@ State lives in per-session **workspaces** (`enable_workspaces: true`, `workspace
 
 `ParameterManager` (`src/workflow/ParameterManager.py`) persists widget state to JSON and generates TOPP `.ini` files. `configure()` exposes TOPP tool parameters via `self.ui.input_TOPP('FLASHDeconv', exclude_parameters=[...], custom_defaults={...})`. **Widget keys must match keys in `default-parameters.json`.** `presets.json` holds named parameter bundles (`test_parameter_presets.py` guards this).
 
-### Deployment & runtime (`entrypoint.sh`, `k8s/`)
+### Deployment & runtime
 
-The container entrypoint starts **Redis** + one or more **RQ workers** (queue `openms-workflows`) + Streamlit. When `STREAMLIT_SERVER_COUNT > 1`, it runs N Streamlit instances behind an **nginx** load balancer with sticky-cookie session routing. `QueueManager` (`src/workflow/QueueManager.py`) offloads `execution()` to RQ when `online_deployment` is set. The entrypoint is written to tolerate **Apptainer/Singularity** read-only rootfs (all runtime state goes under `$RUNTIME_DIR`, default `/tmp/opendiakiosk`). `k8s/` is a kustomize base + `overlays/prod` deploying to namespace `openms` as `ghcr.io/openms/flashapp:latest` behind nginx/traefik ingress; `clean-up-workspaces.py` runs via cron for periodic GC.
+The current image starts Streamlit and runs local workflows. For online execution,
+Redis and an RQ worker are separately managed with the same image, settings and
+workspace volume; `REDIS_URL` selects online mode. See `experimental/README.md`.
+The upstream `docker/entrypoint.sh`, `k8s/` and archived deployment files describe
+the former combined image, including nginx, embedded Redis and scheduled cleanup.
+They are historical references and are not used by the split image.
 
 ### CI (`.github/workflows/`)
 
