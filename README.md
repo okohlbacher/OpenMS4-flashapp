@@ -80,3 +80,27 @@ under a different operator — set `legal_links` in `settings.json`:
 
 Any link you omit falls back to its OpenMS default. The `privacy` URL is reused for the
 consent banner's privacy-policy link, so consent and policy stay in sync.
+
+<!-- package-graph:begin -->
+## Where this package sits
+
+![OpenMS 4 package architecture](docs/package-architecture.svg)
+
+`flashapp` builds against the installed **core**, **cli**, **topp**, **flash**, **pyopenms**, **flashtnt** packages at the revisions recorded in [`dependencies.lock.json`](dependencies.lock.json). No other package builds against it.
+
+| Repository | Relation | Contents |
+| --- | --- | --- |
+| [OpenMS4-core](https://github.com/okohlbacher/OpenMS4-core) | dependency | scientific library, OpenSwathAlgo, readers and writers, runtime data, optional TestSupport |
+| [OpenMS4-cli](https://github.com/okohlbacher/OpenMS4-cli) | dependency | TOPPBase, tool registration and discovery |
+| [OpenMS4-topp](https://github.com/okohlbacher/OpenMS4-topp) | dependency | 123 console tools |
+| [OpenMS4-flash](https://github.com/okohlbacher/OpenMS4-flash) | dependency | FLASHDeconv and the OpenMS::FLASH backend |
+| [OpenMS4-pyopenms](https://github.com/okohlbacher/OpenMS4-pyopenms) | dependency | nanobind bindings, installed module tree and repaired wheels |
+| [OpenMS4-flashtnt](https://github.com/okohlbacher/OpenMS4-flashtnt) | dependency | FLASHTnT tagging executable |
+
+The eighteen repositories are assembled by the parent repository
+[OpenMS4-tests](https://github.com/okohlbacher/OpenMS4-tests), which holds the submodule pins (`packages.lock.json`), the
+dependency-order build runner and the contract tests that keep the graph consistent.
+[`docs/project-state.md`](https://github.com/okohlbacher/OpenMS4-tests/blob/main/docs/project-state.md) is the current state
+of the whole project; [`docs/build-split-packages.md`](https://github.com/okohlbacher/OpenMS4-tests/blob/main/docs/build-split-packages.md)
+reproduces the installed-SDK build.
+<!-- package-graph:end -->
