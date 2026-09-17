@@ -1,12 +1,12 @@
 {
   "schema_version": 2,
-  "release": "pyopenms-v4.0.0.dev0-ci.4",
-  "core_source_revision": "ac41cc177023e24a8fbc711a6ce9010187c54c44",
-  "pyopenms_source_revision": "d3e6867135eb57e7b2699a8fad5d7a2154a544a3",
+  "release": "pyopenms-v4.0.0.dev0-ci.5",
+  "core_source_revision": "84847138c0de67149601aaa860af7ac8e2e64534",
+  "pyopenms_source_revision": "3013dfed9338b7f8926b35d6120f6d138e7ad15e",
   "artifacts": [
     {
       "path": "pyopenms-4.0.0.dev0-cp312-cp312-manylinux_2_39_x86_64.whl",
-      "sha256": "4c1d7f3e00d51d339ed6cbb886388d96cc7ec7edda4c90bb161734f04b56d3c3",
+      "sha256": "9019e51bdccbd44c1db1759cc121d9cef9a911d604cb53cbc9c190b54963663b",
       "kind": "wheel"
     }
   ],
