@@ -3,32 +3,32 @@
   "dependencies": {
     "OpenMS": {
       "version": "4.0.0",
-      "source_revision": "ac41cc177023e24a8fbc711a6ce9010187c54c44",
+      "source_revision": "84847138c0de67149601aaa860af7ac8e2e64534",
       "repository": "https://github.com/okohlbacher/OpenMS4-core"
     },
     "OpenMSCLI": {
       "version": "1.0.0",
-      "source_revision": "6f50080aa391207a0360e472921f0544f5e0bc6d",
+      "source_revision": "b65ece7fd5a72b02b87cc18432d917c60b2b4282",
       "repository": "https://github.com/okohlbacher/OpenMS4-cli"
     },
     "OpenMSTOPP": {
       "version": "1.0.0",
-      "source_revision": "0206f6e175418d6b51e77095f97466271acff8a7",
+      "source_revision": "1e9a0a18590c4ed947ed907e35060825a4bf395e",
       "repository": "https://github.com/okohlbacher/OpenMS4-topp"
     },
     "OpenMSFLASH": {
       "version": "1.0.0",
-      "source_revision": "0b0dfe14e4c439c0b95fbafcabc3d23a76ff8d84",
+      "source_revision": "3b5b6e65422ac516598e035006eb083a982d824f",
       "repository": "https://github.com/okohlbacher/OpenMS4-flash"
     },
     "pyopenms": {
       "version": "4.0.0.dev0",
-      "source_revision": "d3e6867135eb57e7b2699a8fad5d7a2154a544a3",
+      "source_revision": "3013dfed9338b7f8926b35d6120f6d138e7ad15e",
       "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
     },
     "FLASHTnT": {
       "version": "1.0.0",
-      "source_revision": "f956a6ddb67f17c2d054700ba0b3f2d63f5ae4a8",
+      "source_revision": "48f760f239750030a4c967e0e63ce680ed94daed",
       "repository": "https://github.com/okohlbacher/OpenMS4-flashtnt"
     }
   },
