@@ -69,7 +69,7 @@ pyOpenMS wheel. Compose runs local workflows and persists `/workspaces`.
 
 The released split pyOpenMS wheel can be tested independently of runtime assembly.
 The committed `pyopenms-linux-x64.lock.json` and
-`pyopenms-macos-arm64.lock.json` record the ci.5 release wheel SHA-256, exact Core
+`pyopenms-macos-arm64.lock.json` record the ci.6 release wheel SHA-256, exact Core
 and pyOpenMS source pins, and complete Core build identity. The Linux wheel requires
 glibc 2.39 or newer; the ARM macOS wheel requires macOS 26. Both require CPython 3.12.
 
@@ -79,7 +79,7 @@ For example, on Linux x86_64 with Python 3.12:
 python3.12 -m venv .venv
 .venv/bin/python -m pip install --require-hashes --only-binary=:all: -r requirements.txt
 mkdir -p wheel-artifacts
-gh release download pyopenms-v4.0.0.dev0-ci.5 --repo okohlbacher/OpenMS4-pyopenms \
+gh release download pyopenms-v4.0.0.dev0-ci.6 --repo okohlbacher/OpenMS4-pyopenms \
   --pattern pyopenms-4.0.0.dev0-cp312-cp312-manylinux_2_39_x86_64.whl --dir wheel-artifacts
 .venv/bin/python experimental/verify_artifacts.py experimental/pyopenms-linux-x64.lock.json \
   wheel-artifacts --wheel-only --check-host
