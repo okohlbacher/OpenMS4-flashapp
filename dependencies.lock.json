@@ -23,7 +23,7 @@
     },
     "pyopenms": {
       "version": "4.0.0.dev0",
-      "source_revision": "c15168b8f00b1263cde6d5f4e4df376e9f95415d",
+      "source_revision": "ca7518265b66ccc099cceedc4856c5604d9aefdf",
       "repository": "https://github.com/okohlbacher/OpenMS4-pyopenms"
     },
     "FLASHTnT": {
